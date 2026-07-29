@@ -29,16 +29,20 @@ export default function Cadastro() {
     );
 
     const newUser = {
-      id: credential.user.uid,
-      name: nome,
-      email,
-      phone: telefone,
-    };
+  id: credential.user.uid,
+  name: nome,
+  email,
+  phone: telefone,
+  type: "cliente", // ou outro valor padrão que você usar
+  photoURL: "",
+};
 
     await setDoc(doc(db, "users", credential.user.uid), {
       name: nome,
       email,
       phone: telefone,
+      type: "cliente",
+      photoURL: "",
       createdAt: new Date().toISOString(),
     });
 
