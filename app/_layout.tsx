@@ -1,6 +1,7 @@
 import { FavoritesProvider } from "@/src/contexts/FavoritesContext";
 import { ServiceProvider } from "@/src/contexts/ServiceContext";
 import { UserProvider, useUser } from "@/src/contexts/UserContext";
+import Toast from "react-native-toast-message";
 
 import {
   setUserOffline,
@@ -63,6 +64,7 @@ function AppContent() {
       </Stack>
 
       <StatusBar style="auto" />
+      <Toast />
     </>
   );
 }

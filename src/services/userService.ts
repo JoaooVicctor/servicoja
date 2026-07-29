@@ -1,20 +1,16 @@
 import { uploadImage } from "./cloudinary";
-import { auth, db } from "./firebase";
+import { db } from "./firebase";
 
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { User } from "../types/user";
 
 export async function updateProfilePhoto(
+  userId: string,
   imageUri: string
 ): Promise<User> {
-  console.log("auth.currentUser:", auth.currentUser);
-  if (!auth.currentUser) {
-    throw new Error("Usuário não autenticado.");
-  }
-
   const photoURL = await uploadImage(imageUri);
 
-  const userRef = doc(db, "users", auth.currentUser.uid);
+  const userRef = doc(db, "users", userId);
 
   await updateDoc(userRef, {
     photoURL,
@@ -22,8 +18,12 @@ export async function updateProfilePhoto(
 
   const snapshot = await getDoc(userRef);
 
+  if (!snapshot.exists()) {
+    throw new Error("Usuário não encontrado.");
+  }
+
   return {
-    id: auth.currentUser.uid,
+    id: userId,
     ...(snapshot.data() as Omit<User, "id">),
   };
 }

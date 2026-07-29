@@ -1,5 +1,10 @@
 import { Button } from "@/src/components/Button";
 import { useUser } from "@/src/contexts/UserContext";
+import {
+  showError,
+  showInfo,
+  showSuccess,
+} from "@/src/utils/toast";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -29,7 +34,10 @@ export default function Perfil() {
       await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
-      alert("Permita o acesso à galeria.");
+      showInfo(
+  "Permissão necessária",
+  "Permita o acesso à galeria para escolher uma foto."
+);
       return;
     }
 
@@ -47,14 +55,31 @@ export default function Perfil() {
 
     const imageUri = result.assets[0].uri;
 
-   const updatedUser = await updateProfilePhoto(imageUri);
+   if (!user) {
+ showError(
+  "Erro",
+  "Usuário não encontrado."
+);
+  return;
+}
+
+const updatedUser = await updateProfilePhoto(
+  user.id,
+  imageUri
+);
 
     await setUser(updatedUser);
 
-    alert("Foto atualizada com sucesso!");
+   showSuccess(
+  "Foto atualizada",
+  "Sua foto foi alterada com sucesso."
+);
   } catch (error: any) {
     console.log(error);
-    alert(error.message);
+    showError(
+  "Erro",
+  error.message
+);
   }
 }
 
