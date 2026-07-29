@@ -8,6 +8,9 @@ export interface Service {
 
   userId: string;
   userName: string;
+  userPhoto?: string;
+
+  
 
   images: string[];
 

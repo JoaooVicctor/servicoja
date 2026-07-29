@@ -179,18 +179,19 @@ export default function ServiceDetails() {
     setIsOpeningChat(true);
 
     const conversationId =
-      await startConversation({
-        serviceId: service.id,
-        serviceTitle: service.title,
-        serviceImage:
-          service.images[0] || "",
+    await startConversation({
+    serviceId: service.id,
+    serviceTitle: service.title,
+    serviceImage: service.images[0] || "",
 
-        customerId: user.id,
-        customerName: user.name,
+    customerId: user.id,
+    customerName: user.name,
+    customerPhoto: user.photoURL,
 
-        ownerId: service.userId,
-        ownerName: service.userName,
-      });
+    ownerId: service.userId,
+    ownerName: service.userName,
+    ownerPhoto: service.userPhoto,
+  });
 
     router.push({
       pathname: "/chat/[id]",
@@ -503,15 +504,21 @@ export default function ServiceDetails() {
             Publicado por
           </Text>
 
-          <View style={styles.userCard}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {service.userName
-                  .charAt(0)
-                  .toUpperCase()}
-              </Text>
-            </View>
-
+         <View style={styles.userCard}>
+  {service.userPhoto ? (
+  <View style={styles.avatar}>
+    <Image
+      source={{ uri: service.userPhoto }}
+      style={styles.avatarImage}
+    />
+  </View>
+) : (
+  <View style={styles.avatar}>
+    <Text style={styles.avatarText}>
+      {service.userName.charAt(0).toUpperCase()}
+    </Text>
+  </View>
+)}
             <View style={styles.userInformation}>
               <Text style={styles.userName}>
                 {service.userName}
@@ -905,13 +912,20 @@ const styles = StyleSheet.create({
   },
 
   avatar: {
-    width: 55,
-    height: 55,
-    borderRadius: 28,
-    backgroundColor: "#1677FF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  width: 55,
+  height: 55,
+  borderRadius: 28,
+  backgroundColor: "#1677FF",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+},
+avatarImage: {
+  width: "100%",
+  height: "100%",
+  borderRadius: 28,
+  resizeMode: "cover",
+},
 
   avatarText: {
     fontSize: 22,

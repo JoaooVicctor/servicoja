@@ -23,6 +23,8 @@ import {
 interface CreateServiceData {
   userId: string;
   userName: string;
+  userPhoto?: string;
+
   images: string[];
   category: string;
   price: string;

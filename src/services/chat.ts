@@ -27,9 +27,11 @@ export interface StartConversationData {
 
   customerId: string;
   customerName: string;
+  customerPhoto?: string;
 
   ownerId: string;
   ownerName: string;
+  ownerPhoto?: string;
 }
 
 export interface SendMessageData {
@@ -59,14 +61,16 @@ export async function startConversation(
   data: StartConversationData
 ): Promise<string> {
   const {
-    serviceId,
-    serviceTitle,
-    serviceImage,
-    customerId,
-    customerName,
-    ownerId,
-    ownerName,
-  } = data;
+  serviceId,
+  serviceTitle,
+  serviceImage,
+  customerId,
+  customerName,
+  customerPhoto,
+  ownerId,
+  ownerName,
+  ownerPhoto,
+} = data;
 
   if (!serviceId) {
     throw new Error(
@@ -141,9 +145,11 @@ export async function startConversation(
 
     customerId,
     customerName,
+    customerPhoto,
 
     ownerId,
     ownerName,
+    ownerPhoto,
 
     lastMessage: "",
     lastMessageAt: serverTimestamp(),

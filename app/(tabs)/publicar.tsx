@@ -383,10 +383,12 @@ return;
       }
 
       await createService({
-        userId: user.id,
-        userName: user.name,
-        ...serviceData,
-      });
+  userId: user.id,
+  userName: user.name,
+  userPhoto: user.photoURL,
+
+  ...serviceData,
+});
 
       clearForm();
 
