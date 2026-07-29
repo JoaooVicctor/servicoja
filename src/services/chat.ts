@@ -1,0 +1,556 @@
+import { db } from "@/src/services/firebase";
+
+import {
+  addDoc,
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where
+} from "firebase/firestore";
+
+export type MessageType =
+  | "text"
+  | "image"
+  | "audio";
+
+export interface StartConversationData {
+  serviceId: string;
+  serviceTitle: string;
+  serviceImage?: string;
+
+  customerId: string;
+  customerName: string;
+
+  ownerId: string;
+  ownerName: string;
+}
+
+export interface SendMessageData {
+  conversationId: string;
+
+  senderId: string;
+  senderName: string;
+
+  type: MessageType;
+
+  text?: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  duration?: number;
+
+  replyTo?: {
+    id: string;
+    senderId: string;
+    senderName: string;
+    type: MessageType;
+    text?: string;
+    imageUrl?: string;
+  };
+}
+
+export async function startConversation(
+  data: StartConversationData
+): Promise<string> {
+  const {
+    serviceId,
+    serviceTitle,
+    serviceImage,
+    customerId,
+    customerName,
+    ownerId,
+    ownerName,
+  } = data;
+
+  if (!serviceId) {
+    throw new Error(
+      "O ID do serviço não foi informado."
+    );
+  }
+
+  if (!customerId || !ownerId) {
+    throw new Error(
+      "Os participantes da conversa não foram informados."
+    );
+  }
+
+  if (customerId === ownerId) {
+    throw new Error(
+      "Você não pode iniciar uma conversa com você mesmo."
+    );
+  }
+
+  const conversationsReference =
+    collection(db, "conversations");
+
+
+  const existingConversationQuery = query(
+    conversationsReference,
+    where(
+      "participantIds",
+      "array-contains",
+      customerId
+    ),
+    limit(30)
+  );
+
+  const existingConversationSnapshot =
+    await getDocs(existingConversationQuery);
+
+  const existingConversation =
+    existingConversationSnapshot.docs.find(
+      (conversationDocument) => {
+        const conversationData =
+          conversationDocument.data();
+
+        return (
+          conversationData.serviceId ===
+            serviceId &&
+          conversationData.customerId ===
+            customerId &&
+          conversationData.ownerId === ownerId
+        );
+      }
+    );
+
+  if (existingConversation) {
+    return existingConversation.id;
+  }
+
+  const conversationReference = doc(
+    conversationsReference
+  );
+
+  const conversationData: Record<
+    string,
+    unknown
+  > = {
+    serviceId,
+    serviceTitle,
+
+    participantIds: [
+      customerId,
+      ownerId,
+    ],
+
+    customerId,
+    customerName,
+
+    ownerId,
+    ownerName,
+
+    lastMessage: "",
+    lastMessageAt: serverTimestamp(),
+
+    createdAt: serverTimestamp(),
+  };
+
+  if (serviceImage) {
+    conversationData.serviceImage =
+      serviceImage;
+  }
+
+  await setDoc(
+    conversationReference,
+    conversationData
+  );
+
+  return conversationReference.id;
+}
+
+
+export async function sendMessage(
+  data: SendMessageData
+): Promise<void>;
+
+export async function sendMessage(
+  conversationId: string,
+  senderId: string,
+  senderName: string,
+  text: string
+): Promise<void>;
+
+export async function sendMessage(
+  dataOrConversationId:
+    | SendMessageData
+    | string,
+  oldSenderId?: string,
+  oldSenderName?: string,
+  oldText?: string
+): Promise<void> {
+  let messageData: SendMessageData;
+
+ 
+  if (
+    typeof dataOrConversationId ===
+    "string"
+  ) {
+    messageData = {
+      conversationId:
+        dataOrConversationId,
+      senderId: oldSenderId ?? "",
+      senderName: oldSenderName ?? "",
+      type: "text",
+      text: oldText ?? "",
+    };
+  } else {
+    messageData = dataOrConversationId;
+  }
+
+  const {
+  conversationId,
+  senderId,
+  senderName,
+  type,
+  text,
+  imageUrl,
+  audioUrl,
+  duration,
+  replyTo,
+} = messageData;
+
+  if (!conversationId) {
+    throw new Error(
+      "A conversa não foi encontrada."
+    );
+  }
+
+  if (!senderId) {
+    throw new Error(
+      "O usuário não foi identificado."
+    );
+  }
+
+  if (!senderName) {
+    throw new Error(
+      "O nome do usuário não foi informado."
+    );
+  }
+
+  if (type === "text" && !text?.trim()) {
+    throw new Error(
+      "Digite uma mensagem."
+    );
+  }
+
+  if (type === "image" && !imageUrl) {
+    throw new Error(
+      "A imagem não foi enviada."
+    );
+  }
+
+  if (type === "audio" && !audioUrl) {
+    throw new Error(
+      "O áudio não foi enviado."
+    );
+  }
+
+  const conversationReference = doc(
+    db,
+    "conversations",
+    conversationId
+  );
+
+  const messagesReference = collection(
+    conversationReference,
+    "messages"
+  );
+
+  let initialStatus: "sent" | "delivered" =
+  "sent";
+
+const conversationSnapshot =
+  await getDoc(conversationReference);
+
+if (conversationSnapshot.exists()) {
+  const conversationData =
+    conversationSnapshot.data();
+
+  const participantIds =
+    conversationData.participantIds as
+      | string[]
+      | undefined;
+
+  const recipientId =
+    participantIds?.find(
+      (participantId) =>
+        participantId !== senderId
+    );
+
+  if (recipientId) {
+    const recipientReference = doc(
+      db,
+      "users",
+      recipientId
+    );
+
+    const recipientSnapshot =
+      await getDoc(recipientReference);
+
+    if (
+      recipientSnapshot.exists() &&
+      recipientSnapshot.data().online === true
+    ) {
+      initialStatus = "delivered";
+    }
+  }
+}
+
+  const newMessage: Record<
+  string,
+  unknown
+> = {
+  conversationId,
+  senderId,
+  senderName,
+  type,
+  createdAt: serverTimestamp(),
+  status: initialStatus,
+};
+
+if (replyTo) {
+  newMessage.replyTo = replyTo;
+}
+
+  if (type === "text") {
+    newMessage.text = text?.trim();
+  }
+
+  if (type === "image") {
+    newMessage.imageUrl = imageUrl;
+
+    if (text?.trim()) {
+      newMessage.text = text.trim();
+    }
+  }
+
+  if (type === "audio") {
+    newMessage.audioUrl = audioUrl;
+
+    if (
+      typeof duration === "number"
+    ) {
+      newMessage.duration = duration;
+    }
+  }
+
+  const createdMessageReference =
+  await addDoc(
+    messagesReference,
+    newMessage
+  );
+
+  let lastMessage = "";
+
+  if (type === "text") {
+    lastMessage = text?.trim() ?? "";
+  }
+
+  if (type === "image") {
+    lastMessage = "📷 Foto";
+  }
+
+  if (type === "audio") {
+    lastMessage = "🎤 Áudio";
+  }
+
+  await updateDoc(
+  conversationReference,
+  {
+    lastMessage,
+    lastMessageId:
+      createdMessageReference.id,
+    lastMessageAt:
+      serverTimestamp(),
+  }
+);
+}
+
+export async function deleteMessageForEveryone(
+  conversationId: string,
+  messageId: string,
+  requesterId: string
+): Promise<void> {
+  if (!conversationId) {
+    throw new Error(
+      "Conversa não encontrada."
+    );
+  }
+
+  if (!messageId) {
+    throw new Error(
+      "Mensagem não encontrada."
+    );
+  }
+
+  if (!requesterId) {
+    throw new Error(
+      "Usuário não identificado."
+    );
+  }
+
+  const conversationReference = doc(
+    db,
+    "conversations",
+    conversationId
+  );
+
+  const messageReference = doc(
+    db,
+    "conversations",
+    conversationId,
+    "messages",
+    messageId
+  );
+
+  const messageSnapshot =
+    await getDoc(messageReference);
+
+  if (!messageSnapshot.exists()) {
+    throw new Error(
+      "A mensagem não existe."
+    );
+  }
+
+  
+
+  const messageData =
+    messageSnapshot.data();
+
+  if (
+    messageData.senderId !== requesterId
+  ) {
+    throw new Error(
+      "Você só pode apagar para todos as mensagens que enviou."
+    );
+  }
+
+  await updateDoc(messageReference, {
+    deleted: true,
+    deletedAt: serverTimestamp(),
+
+    text: "",
+    imageUrl: "",
+    audioUrl: "",
+  });
+
+  const conversationSnapshot =
+    await getDoc(conversationReference);
+
+  if (!conversationSnapshot.exists()) {
+    return;
+  }
+
+  const conversationData =
+    conversationSnapshot.data();
+
+  if (
+    conversationData.lastMessageId ===
+    messageId
+  ) {
+    await updateDoc(
+      conversationReference,
+      {
+        lastMessage:
+          "🚫 Mensagem apagada",
+        lastMessageAt:
+          serverTimestamp(),
+      }
+    );
+  }
+}
+
+export async function deleteMessageForMe(
+  conversationId: string,
+  messageId: string,
+  userId: string
+): Promise<void> {
+  if (!conversationId) {
+    throw new Error(
+      "Conversa não encontrada."
+    );
+  }
+
+  if (!messageId) {
+    throw new Error(
+      "Mensagem não encontrada."
+    );
+  }
+
+  if (!userId) {
+    throw new Error(
+      "Usuário não identificado."
+    );
+  }
+
+  const messageReference = doc(
+    db,
+    "conversations",
+    conversationId,
+    "messages",
+    messageId
+  );
+
+  await updateDoc(messageReference, {
+    hiddenFor: arrayUnion(userId),
+  });
+}
+
+export async function markMessagesAsDelivered(
+  conversationId: string,
+  userId: string
+): Promise<void> {
+  if (!conversationId || !userId) {
+    return;
+  }
+
+  const messagesReference = collection(
+    db,
+    "conversations",
+    conversationId,
+    "messages"
+  );
+
+  const messagesSnapshot = await getDocs(
+    messagesReference
+  );
+
+  const updates = messagesSnapshot.docs.map(
+    async (messageDocument) => {
+      const messageData =
+        messageDocument.data();
+
+      const isReceivedMessage =
+        messageData.senderId !== userId;
+
+      const canBeMarkedAsRead =
+        messageData.status === "sent" ||
+        messageData.status === "delivered";
+
+      const isDeleted =
+        messageData.deleted === true;
+
+      if (
+        isReceivedMessage &&
+        canBeMarkedAsRead &&
+        !isDeleted
+      ) {
+        await updateDoc(
+          messageDocument.ref,
+          {
+            status: "read",
+            readAt: serverTimestamp(),
+          }
+        );
+      }
+    }
+  );
+
+  await Promise.all(updates);
+}

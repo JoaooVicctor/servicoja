@@ -1,5 +1,10 @@
 import { useUser } from "@/src/contexts/UserContext";
-import { sendMessage } from "@/src/services/chat";
+import {
+  deleteMessageForEveryone,
+  deleteMessageForMe,
+  markMessagesAsDelivered,
+  sendMessage,
+} from "@/src/services/chat";
 import { uploadImage } from "@/src/services/cloudinary";
 import { db } from "@/src/services/firebase";
 import { ChatMessage } from "@/src/types/Chat";
@@ -13,9 +18,12 @@ import {
 
 import {
   collection,
+  doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
+  Timestamp,
 } from "firebase/firestore";
 
 import {
@@ -48,6 +56,10 @@ export default function ChatScreen() {
   const flatListRef =
     useRef<FlatList<ChatMessage>>(null);
 
+    const messageRefs = useRef<
+    Record<string, View | null>
+    >({});
+
   const [messages, setMessages] = useState<
     ChatMessage[]
   >([]);
@@ -65,51 +77,98 @@ export default function ChatScreen() {
 
   const [previewImage, setPreviewImage] =
     useState("");
+    const [replyMessage, setReplyMessage] =
+    useState<ChatMessage | null>(null);
 
-  useEffect(() => {
-    if (!id) {
-      return;
-    }
+    const [highlightedMessageId, setHighlightedMessageId] =
+    useState<string | null>(null);
 
-    const messagesQuery = query(
-      collection(
-        db,
-        "conversations",
-        id,
-        "messages"
-      ),
-      orderBy("createdAt", "asc")
+    const [selectedMessage, setSelectedMessage] =
+    useState<ChatMessage | null>(null);
+
+
+    const [menuVisible, setMenuVisible] =
+  useState(false);
+
+  const [otherUserName, setOtherUserName] =
+  useState("Conversa");
+
+const [otherUserOnline, setOtherUserOnline] =
+  useState(false);
+
+const [otherUserLastSeen, setOtherUserLastSeen] =
+  useState<Timestamp | null>(null);
+
+  const [otherUserPhoto, setOtherUserPhoto] =
+  useState<string | null>(null);
+
+ useEffect(() => {
+  if (!id || !user?.id) {
+    return;
+  }
+
+  markMessagesAsDelivered(
+    id,
+    user.id
+  );
+
+  const messagesQuery = query(
+    collection(
+      db,
+      "conversations",
+      id,
+      "messages"
+    ),
+    orderBy("createdAt", "asc")
+  );
+
+  const unsubscribe = onSnapshot(
+  messagesQuery,
+  async (snapshot) => {
+    await markMessagesAsDelivered(
+      id,
+      user.id
     );
-
-    const unsubscribe = onSnapshot(
-      messagesQuery,
-      (snapshot) => {
-        const loadedMessages =
-          snapshot.docs.map((document) => ({
+      const loadedMessages =
+        snapshot.docs
+          .map((document) => ({
             id: document.id,
             ...(document.data() as Omit<
               ChatMessage,
               "id"
             >),
-          }));
+          }))
+          .map((message) => {
+  if (
+    user?.id &&
+    message.hiddenFor?.includes(user.id)
+  ) {
+    return {
+      ...message,
+      hiddenForMe: true,
+    };
+  }
 
-        setMessages(loadedMessages);
-      },
-      (error) => {
-        console.log(
-          "Erro ao carregar mensagens:",
-          error
-        );
+  return message;
+})
 
-        Alert.alert(
-          "Erro",
-          "Não foi possível carregar as mensagens."
-        );
-      }
-    );
+      setMessages(loadedMessages);
+    },
+    (error) => {
+      console.log(
+        "Erro ao carregar mensagens:",
+        error
+      );
 
-    return unsubscribe;
-  }, [id]);
+      Alert.alert(
+        "Erro",
+        "Não foi possível carregar as mensagens."
+      );
+    }
+  );
+
+  return unsubscribe;
+}, [id, user?.id]);
 
   useEffect(() => {
     if (messages.length === 0) {
@@ -123,7 +182,91 @@ export default function ChatScreen() {
     }, 100);
   }, [messages]);
 
+  useEffect(() => {
+  if (!id || !user?.id) {
+    return;
+  }
+
+  const conversationId = id;
+  const currentUserId = user.id;
+
+  let unsubscribeUser: (() => void) | undefined;
+
+  async function loadOtherUser() {
+    const conversationRef = doc(
+      db,
+      "conversations",
+      conversationId
+    );
+
+    const conversationSnap =
+      await getDoc(conversationRef);
+
+    if (!conversationSnap.exists()) {
+      return;
+    }
+
+    const data = conversationSnap.data();
+
+    const otherUserId =
+      data.customerId === currentUserId
+        ? data.ownerId
+        : data.customerId;
+
+    const name =
+      data.customerId === currentUserId
+        ? data.ownerName
+        : data.customerName;
+
+    setOtherUserName(name ?? "Usuário");
+
+    unsubscribeUser = onSnapshot(
+      doc(db, "users", otherUserId),
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setOtherUserOnline(false);
+          setOtherUserLastSeen(null);
+          return;
+        }
+
+        const userData = snapshot.data();
+
+        setOtherUserOnline(
+          userData.online === true
+        );
+
+        setOtherUserLastSeen(
+          userData.lastSeen ?? null
+        );
+
+        setOtherUserPhoto(
+          userData.photo ?? null
+        );
+      },
+      (error) => {
+        console.log(
+          "Erro ao acompanhar usuário:",
+          error
+        );
+      }
+    );
+  }
+
+  loadOtherUser();
+
+  return () => {
+    unsubscribeUser?.();
+  };
+}, [id, user?.id]);
+
   async function handleSendMessage() {
+  console.log({
+    text,
+    selectedImage,
+    isSending,
+    replyMessage,
+  });
+
   if (!user || !id || isSending) {
     return;
   }
@@ -135,10 +278,23 @@ export default function ChatScreen() {
   try {
     setIsSending(true);
 
-    // CASO TENHA FOTO
+    const replyData = replyMessage
+  ? {
+      id: replyMessage.id,
+      senderId: replyMessage.senderId,
+      senderName: replyMessage.senderName,
+      type: replyMessage.type,
+      ...(replyMessage.text
+        ? { text: replyMessage.text }
+        : {}),
+      ...(replyMessage.imageUrl
+        ? { imageUrl: replyMessage.imageUrl }
+        : {}),
+    }
+  : undefined;
+
     if (selectedImage) {
-      const imageUrl =
-        await uploadImage(selectedImage);
+      const imageUrl = await uploadImage(selectedImage);
 
       await sendMessage({
         conversationId: id,
@@ -147,33 +303,35 @@ export default function ChatScreen() {
         type: "image",
         imageUrl,
         text: text.trim(),
+        replyTo: replyData,
       });
 
       setSelectedImage(null);
       setText("");
-    }
-
-  
-    else {
-      await sendMessage(
-        id,
-        user.id,
-        user.name,
-        text.trim()
-      );
+      setReplyMessage(null);
+    } else {
+      await sendMessage({
+        conversationId: id,
+        senderId: user.id,
+        senderName: user.name,
+        type: "text",
+        text: text.trim(),
+        replyTo: replyData,
+      });
 
       setText("");
+      setReplyMessage(null);
     }
-  } catch (error) {
-    Alert.alert(
-      "Erro",
-      "Não foi possível enviar."
-    );
+    } catch (error) {
+  console.log("ERRO AO ENVIAR:", error);
 
-    console.log(error);
-  } finally {
-    setIsSending(false);
-  }
+  Alert.alert(
+    "Erro",
+    String(error)
+  );
+} finally {
+  setIsSending(false);
+}
 }
 
   async function handleSendImage() {
@@ -216,45 +374,34 @@ export default function ChatScreen() {
 }
 
 function handleLongPress(item: ChatMessage) {
-  if (!user) return;
+  setSelectedMessage(item);
+  setMenuVisible(true);
+}
 
-  if (item.senderId !== user.id) {
-    return;
-  }
-
-  const created =
-    item.createdAt?.toMillis?.() ?? 0;
-
-  const umaHora = 60 * 60 * 1000;
-
-  const podeApagar =
-    Date.now() - created <= umaHora;
-
-  if (!podeApagar) {
-    Alert.alert(
-      "Tempo expirado",
-      "Você só pode apagar uma mensagem até 1 hora após o envio."
-    );
-    return;
-  }
-
-  Alert.alert(
-    "Mensagem",
-    "O que deseja fazer?",
-    [
-      {
-        text: "Cancelar",
-        style: "cancel",
-      },
-      {
-        text: "Apagar para todos",
-        style: "destructive",
-        onPress: () => {
-          console.log(item.id);
-        },
-      },
-    ]
+function scrollToReply(messageId: string) {
+  const index = messages.findIndex(
+    (message) => message.id === messageId
   );
+
+  if (index === -1) return;
+
+  try {
+    flatListRef.current?.scrollToIndex({
+      index,
+      animated: true,
+      viewPosition: 0.5,
+    });
+  } catch {
+    flatListRef.current?.scrollToEnd({
+      animated: true,
+    });
+  }
+
+  setHighlightedMessageId(messageId);
+
+  setTimeout(() => {
+    setHighlightedMessageId(null);
+  }, 2000);
 }
 
     return (
@@ -275,20 +422,76 @@ function handleLongPress(item: ChatMessage) {
           />
         </Pressable>
 
-        <View>
-          <Text style={styles.headerTitle}>
-            Conversa
-          </Text>
+        <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  }}
+>
+  {otherUserPhoto ? (
+  <Image
+    source={{ uri: otherUserPhoto }}
+    style={{
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      marginRight: 12,
+    }}
+  />
+) : (
+  <View
+    style={{
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "#E5E5E5",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 12,
+    }}
+  >
+    <Ionicons
+      name="person"
+      size={24}
+      color="#666"
+    />
+  </View>
+)}
 
-          <Text style={styles.headerSubtitle}>
-            ServiçoJá
-          </Text>
+          <View>
+            <Text style={styles.headerTitle}>
+              {otherUserName}
+            </Text>
+
+            <Text style={styles.headerSubtitle}>
+              {otherUserOnline
+                ? "🟢 Online"
+                : otherUserLastSeen
+                ? `Visto por último às ${otherUserLastSeen
+                    .toDate()
+                    .toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`
+                : "Offline"}
+            </Text>
+          </View>
         </View>
       </View>
 
       <FlatList
         ref={flatListRef}
         data={messages}
+        onScrollToIndexFailed={(info) => {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index: info.index,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }, 500);
+      }}
         keyExtractor={(item) => item.id}
         contentContainerStyle={
           styles.messagesContent
@@ -318,9 +521,16 @@ function handleLongPress(item: ChatMessage) {
         }
                 renderItem={({ item }) => {
           const isMine = item.senderId === user?.id;
+          const statusIcon =
+          item.status === "sent"
+            ? "checkmark"
+            : "checkmark-done";
 
           return (
-            <View
+              <View
+                ref={(ref) => {
+                messageRefs.current[item.id] = ref;
+              }}
               style={[
                 styles.messageRow,
                 isMine
@@ -328,8 +538,13 @@ function handleLongPress(item: ChatMessage) {
                   : styles.otherMessageRow,
               ]}
             >
-              <Pressable
-                onLongPress={() => handleLongPress(item)}
+              <Pressable  
+                  disabled={item.deleted}
+                  onLongPress={() => {
+                  if (!item.deleted) {
+                    handleLongPress(item);
+                  }
+                }}
                 style={{
                   maxWidth: "80%",
                   alignSelf: isMine ? "flex-end" : "flex-start",
@@ -338,6 +553,10 @@ function handleLongPress(item: ChatMessage) {
                 <View
                   style={[
                     styles.messageBubble,
+                    highlightedMessageId === item.id && {
+                      borderWidth: 3,
+                      borderColor: "#25D366",
+                    },
                     isMine
                       ? styles.myMessageBubble
                       : styles.otherMessageBubble,
@@ -351,26 +570,147 @@ function handleLongPress(item: ChatMessage) {
                     </Text>
                   )}
 
-                  {(!item.type ||
-                    item.type === "text") && (
-                    <Text
-                      style={[
-                        styles.messageText,
-                        isMine &&
-                          styles.myMessageText,
-                      ]}
+                  {!item.deleted &&
+                  item.replyTo && (
+                    <Pressable
+                      onPress={() => {
+                        if (item.replyTo) {
+                          scrollToReply(item.replyTo.id);
+                        }
+                      }}
+                      style={{
+                        borderLeftWidth: 3,
+                        borderLeftColor: "#1677FF",
+                        backgroundColor: isMine
+                          ? "rgba(255,255,255,0.18)"
+                          : "#F2F2F2",
+                        borderRadius: 8,
+                        padding: 8,
+                        marginBottom: 8,
+                      }}
                     >
-                      {item.text}
-                    </Text>
+                      <Text
+                        style={{
+                          fontWeight: "700",
+                          color: isMine ? "#FFFFFF" : "#1677FF",
+                          marginBottom: 6,
+                        }}
+                      >
+                        {item.replyTo.senderName}
+                      </Text>
+
+                      {item.replyTo.type === "image" &&
+                      item.replyTo.imageUrl ? (
+                        <Image
+                          source={{ uri: item.replyTo.imageUrl }}
+                          style={{
+                            width: 55,
+                            height: 55,
+                            borderRadius: 8,
+                            marginBottom: item.replyTo.text ? 6 : 0,
+                          }}
+                        />
+                      ) : null}
+
+                      {item.replyTo.text ? (
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: isMine ? "#FFFFFF" : "#555",
+                          }}
+                        >
+                          {item.replyTo.text}
+                        </Text>
+                      ) : null}
+                    </Pressable>
                   )}
 
-                  {item.type === "image" &&
-                    item.imageUrl && (
+                  {item.hiddenForMe ? (
+  <Text
+    style={{
+      fontStyle: "italic",
+      color: isMine ? "#E5E5E5" : "#777",
+    }}
+  >
+    🚫 Esta mensagem foi apagada para você
+  </Text>
+) : item.deleted ? (
+  <Text
+    style={{
+      fontStyle: "italic",
+      color: isMine ? "#E5E5E5" : "#777",
+    }}
+  >
+    🚫 Esta mensagem foi apagada
+  </Text>
+) : (
+  (!item.type || item.type === "text") && (
+    <View
+  style={{
+    flexDirection: "row",
+    alignItems: "flex-end",
+  }}
+>
+  <Text
+    style={[
+      styles.messageText,
+      isMine && styles.myMessageText,
+      { flex: 1 },
+    ]}
+  >
+    {item.text}
+  </Text>
+
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      marginLeft: 8,
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 11,
+        color: isMine ? "#EAEAEA" : "#888",
+        marginRight: 4,
+      }}
+    >
+      {item.createdAt?.toDate
+        ? item.createdAt
+            .toDate()
+            .toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+        : ""}
+    </Text>
+
+    {isMine && (
+      <Ionicons
+        name={statusIcon}
+        size={16}
+        color={
+          item.status === "read"
+            ? "#4FC3F7"
+            : "#FFFFFF"
+        }
+      />
+    )}
+  </View>
+</View>
+  )
+)}
+
+                  {!item.deleted &&
+                  item.type === "image" &&
+                  item.imageUrl && (
                       <Pressable
                         onPress={() => {
                           setPreviewImage(item.imageUrl!);
                           setPreviewVisible(true);
                         }}
+                        onLongPress={() => handleLongPress(item)}
+                        delayLongPress={300}
                       >
                         <Image
                           source={{ uri: item.imageUrl }}
@@ -378,10 +718,11 @@ function handleLongPress(item: ChatMessage) {
                           resizeMode="cover"
                         />
                       </Pressable>
-                    )}
+                  )}
 
-                  {item.type === "image" &&
-                    item.text && (
+                  {!item.deleted &&
+                  item.type === "image" &&
+                  item.text && (
                       <Text
                         style={[
                           styles.imageCaption,
@@ -393,7 +734,8 @@ function handleLongPress(item: ChatMessage) {
                       </Text>
                     )}
 
-                  {item.type === "audio" && (
+                  {!item.deleted &&
+                  item.type === "audio" && (
                     <View style={styles.audioBubble}>
                       <Ionicons
                         name="mic"
@@ -411,6 +753,7 @@ function handleLongPress(item: ChatMessage) {
                           isMine &&
                             styles.myAudioText,
                         ]}
+                        
                       >
                         Áudio
                       </Text>
@@ -465,6 +808,64 @@ function handleLongPress(item: ChatMessage) {
   </View>
 )}
 
+{replyMessage && (
+  <View
+    style={{
+      backgroundColor: "#FFFFFF",
+      borderTopWidth: 1,
+      borderTopColor: "#E5E5E5",
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    }}
+  >
+    <View
+      style={{
+        borderLeftWidth: 4,
+        borderLeftColor: "#1677FF",
+        paddingLeft: 10,
+      }}
+    >
+      <Text
+        style={{
+          color: "#1677FF",
+          fontWeight: "700",
+        }}
+      >
+        Respondendo {replyMessage.senderName}
+      </Text>
+
+      <Text
+        numberOfLines={1}
+        style={{
+          color: "#555",
+          marginTop: 2,
+        }}
+      >
+        {replyMessage.type === "image"
+          ? "📷 Foto"
+          : replyMessage.text}
+      </Text>
+    </View>
+
+    <Pressable
+      onPress={() =>
+        setReplyMessage(null)
+      }
+      style={{
+        position: "absolute",
+        right: 12,
+        top: 12,
+      }}
+    >
+      <Ionicons
+        name="close"
+        size={22}
+        color="#777"
+      />
+    </Pressable>
+  </View>
+)}
+
             <View style={styles.inputContainer}>
         <Pressable
           style={[
@@ -512,43 +913,183 @@ function handleLongPress(item: ChatMessage) {
         </Pressable>
       </View>
       <Modal
-  visible={previewVisible}
+  visible={menuVisible}
   transparent
   animationType="fade"
 >
-  <View
+  <Pressable
     style={{
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.95)",
-      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.25)",
+      justifyContent: "flex-end",
+    }}
+    onPress={() => setMenuVisible(false)}
+  >
+    <View
+      style={{
+        backgroundColor: "#FFF",
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingVertical: 10,
+      }}
+    >
+
+      <Pressable
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 16,
+          gap: 12,
+        }}
+        onPress={() => {
+          if (selectedMessage) {
+            setReplyMessage(selectedMessage);
+          }
+
+          setMenuVisible(false);
+        }}
+      >
+        <Ionicons
+          name="return-up-back"
+          size={22}
+          color="#1677FF"
+        />
+
+        <Text>Responder</Text>
+      </Pressable>
+
+      {selectedMessage &&
+  (() => {
+    const created =
+      selectedMessage.createdAt
+        ?.toMillis?.() ?? 0;
+
+    const isMyMessage =
+      selectedMessage.senderId ===
+      user?.id;
+
+    const isWithinDeleteLimit =
+      Date.now() - created <=
+      60 * 60 * 1000;
+
+    const canDeleteForEveryone =
+    selectedMessage.senderId === user?.id &&
+    Date.now() -
+    (selectedMessage.createdAt?.toMillis?.() ?? 0) <=
+    60 * 60 * 1000 &&
+    !selectedMessage.deleted;
+
+    return (
+      <>
+        {canDeleteForEveryone && (
+          <Pressable
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              padding: 16,
+              gap: 12,
+            }}
+            onPress={async () => {
+              if (
+                !id ||
+                !user?.id ||
+                !selectedMessage
+              ) {
+                return;
+              }
+
+              try {
+                await deleteMessageForEveryone(
+                  id,
+                  selectedMessage.id,
+                  user.id
+                );
+              } catch (error) {
+                Alert.alert(
+                  "Erro",
+                  error instanceof Error
+                    ? error.message
+                    : "Não foi possível apagar a mensagem."
+                );
+              } finally {
+                setMenuVisible(false);
+                setSelectedMessage(null);
+              }
+            }}
+          >
+            <Ionicons
+              name="trash"
+              size={22}
+              color="red"
+            />
+
+            <Text
+              style={{
+                color: "red",
+              }}
+            >
+              Apagar para todos
+            </Text>
+          </Pressable>
+        )}
+
+        {!selectedMessage.deleted && (
+  <Pressable
+    style={{
+      flexDirection: "row",
       alignItems: "center",
+      padding: 16,
+      gap: 12,
+    }}
+    onPress={async () => {
+      if (
+        !id ||
+        !user?.id ||
+        !selectedMessage
+      ) {
+        return;
+      }
+
+      try {
+        await deleteMessageForMe(
+          id,
+          selectedMessage.id,
+          user.id
+        );
+      } catch (error) {
+        Alert.alert(
+          "Erro",
+          error instanceof Error
+            ? error.message
+            : "Não foi possível apagar a mensagem."
+        );
+      } finally {
+        setMenuVisible(false);
+        setSelectedMessage(null);
+      }
     }}
   >
-    <Pressable
-      style={{
-        position: "absolute",
-        top: 50,
-        right: 20,
-        zIndex: 10,
-      }}
-      onPress={() => setPreviewVisible(false)}
-    >
-      <Ionicons
-        name="close"
-        size={34}
-        color="#FFFFFF"
-      />
-    </Pressable>
-
-    <Image
-      source={{ uri: previewImage }}
-      style={{
-        width: "100%",
-        height: "80%",
-      }}
-      resizeMode="contain"
+    <Ionicons
+      name="trash-outline"
+      size={22}
+      color="#555"
     />
-  </View>
+
+    <Text
+      style={{
+        color: "#333",
+      }}
+    >
+      Apagar para mim
+    </Text>
+  </Pressable>
+)}
+      </>
+    );
+  })()}
+
+    </View>
+  </Pressable>
 </Modal>
     </KeyboardAvoidingView>
   );

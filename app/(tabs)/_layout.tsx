@@ -1,33 +1,110 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+
+        tabBarActiveTintColor: "#1677FF",
+        tabBarInactiveTintColor: "#777777",
+
+        tabBarStyle: {
+          height: 68,
+          paddingTop: 7,
+          paddingBottom: 8,
+          backgroundColor: "#FFFFFF",
+          borderTopColor: "#E8E8E8",
+        },
+
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "600",
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "Início",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="home-outline"
+              size={size}
+              color={color}
+            />
+          ),
         }}
       />
+
       <Tabs.Screen
-        name="explore"
+        name="favoritos"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: "Favoritos",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="heart-outline"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+     <Tabs.Screen
+        name="conversas"
+        options={{
+          title: "Conversas",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />'
+
+      <Tabs.Screen
+        name="publicar"
+        options={{
+          title: "Publicar",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="add-circle-outline"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="meus-servicos"
+        options={{
+          title: "Meus serviços",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="briefcase-outline"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="perfil"
+        options={{
+          title: "Perfil",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="person-outline"
+              size={size}
+              color={color}
+            />
+          ),
         }}
       />
     </Tabs>

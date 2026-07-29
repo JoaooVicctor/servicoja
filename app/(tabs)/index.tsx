@@ -1,98 +1,271 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { CategoryCard } from "@/src/components/CategoryCard";
+import { SearchInput } from "@/src/components/SearchInput";
+import { ServiceCard } from "@/src/components/ServiceCard";
+import { useServices } from "@/src/contexts/ServiceContext";
+import { useUser } from "@/src/contexts/UserContext";
+import { categories } from "@/src/data/categories";
+import { colors } from "@/src/theme/colors";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { useMemo, useState } from "react";
 
-export default function HomeScreen() {
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+export default function Home() {
+  const [search, setSearch] = useState("");
+
+  const [
+    selectedCategory,
+    setSelectedCategory,
+  ] = useState<string | null>(null);
+
+  const { user } = useUser();
+  const { services } = useServices();
+
+  const filteredServices = useMemo(() => {
+    const normalizedSearch = search
+      .trim()
+      .toLowerCase();
+
+    return services.filter((service) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        service.title
+          .toLowerCase()
+          .includes(normalizedSearch) ||
+        service.description
+          .toLowerCase()
+          .includes(normalizedSearch) ||
+        service.category
+          .toLowerCase()
+          .includes(normalizedSearch) ||
+        service.city
+          .toLowerCase()
+          .includes(normalizedSearch) ||
+        service.neighborhood
+          .toLowerCase()
+          .includes(normalizedSearch) ||
+        service.userName
+          .toLowerCase()
+          .includes(normalizedSearch);
+
+      const matchesCategory =
+        !selectedCategory ||
+        service.category === selectedCategory;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [
+    search,
+    selectedCategory,
+    services,
+  ]);
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.title}>
+        👋 Olá,{" "}
+        {user?.name || "seja bem-vindo"}
+      </Text>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <Text style={styles.subtitle}>
+        Encontre o serviço ideal para o que você
+        precisa.
+      </Text>
+
+      <SearchInput
+        value={search}
+        onChangeText={setSearch}
+      />
+
+      <Text style={styles.sectionTitle}>
+        Categorias
+      </Text>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={
+          styles.categoriesContainer
+        }
+      >
+        {categories.map((category) => {
+          const isSelected =
+            selectedCategory === category.name;
+
+          return (
+            <View
+              key={category.id}
+              style={[
+                styles.categoryWrapper,
+                isSelected &&
+                  styles.selectedCategory,
+              ]}
+            >
+              <CategoryCard
+                name={category.name}
+                icon={category.icon}
+                onPress={() => {
+                  setSelectedCategory(
+                    isSelected
+                      ? null
+                      : category.name
+                  );
+                }}
+              />
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      <View style={styles.servicesHeader}>
+        <Text style={styles.sectionTitle}>
+          Serviços disponíveis
+        </Text>
+
+        <View style={styles.countContainer}>
+          <Text style={styles.servicesCount}>
+            {filteredServices.length}
+          </Text>
+        </View>
+      </View>
+
+      {filteredServices.length > 0 ? (
+        <View style={styles.servicesGrid}>
+          {filteredServices.map((service) => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+            />
+          ))}
+        </View>
+      ) : (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyIcon}>
+            🔎
+          </Text>
+
+          <Text style={styles.emptyTitle}>
+            Nenhum serviço encontrado
+          </Text>
+
+          <Text style={styles.emptyDescription}>
+            Publique um serviço ou tente pesquisar
+            por outro termo.
+          </Text>
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 120,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+
+  title: {
+    fontSize: 29,
+    fontWeight: "800",
+    color: colors.black,
+  },
+
+  subtitle: {
+    fontSize: 16,
+    color: colors.gray600,
+    marginTop: 8,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+
+  sectionTitle: {
+    fontSize: 21,
+    fontWeight: "700",
+    color: colors.black,
+    marginTop: 28,
+    marginBottom: 15,
+  },
+
+  categoriesContainer: {
+    paddingRight: 20,
+    gap: 10,
+  },
+
+  categoryWrapper: {
+    borderRadius: 15,
+  },
+
+  selectedCategory: {
+    borderWidth: 2,
+    borderColor: "#1677FF",
+  },
+
+  servicesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  countContainer: {
+    minWidth: 29,
+    height: 29,
+    borderRadius: 15,
+    backgroundColor: "#E8F2FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 14,
+  },
+
+  servicesCount: {
+    color: "#1677FF",
+    fontWeight: "700",
+  },
+
+  servicesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 14,
+  },
+
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 55,
+    paddingHorizontal: 25,
+  },
+
+  emptyIcon: {
+    fontSize: 42,
+    marginBottom: 12,
+  },
+
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.black,
+  },
+
+  emptyDescription: {
+    marginTop: 7,
+    fontSize: 14,
+    color: colors.gray600,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });
