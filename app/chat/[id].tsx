@@ -1,4 +1,5 @@
 import { useUser } from "@/src/contexts/UserContext";
+import { uploadAudio } from "@/src/services/audio";
 import {
   deleteMessageForEveryone,
   deleteMessageForMe,
@@ -9,6 +10,7 @@ import { uploadImage } from "@/src/services/cloudinary";
 import { db } from "@/src/services/firebase";
 import { ChatMessage } from "@/src/types/Chat";
 import { Ionicons } from "@expo/vector-icons";
+import { Audio } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -98,6 +100,27 @@ const [otherUserOnline, setOtherUserOnline] =
 
 const [otherUserLastSeen, setOtherUserLastSeen] =
   useState<Timestamp | null>(null);
+
+const [recording, setRecording] =
+  useState<Audio.Recording | null>(null);
+
+const [isRecording, setIsRecording] =
+  useState(false);
+
+const [sound, setSound] =
+  useState<Audio.Sound | null>(null);
+
+const [playingId, setPlayingId] =
+  useState<string | null>(null);
+
+const [isPlaying, setIsPlaying] =
+  useState(false);
+
+const [position, setPosition] =
+  useState(0);
+
+const [duration, setDuration] =
+  useState(0);
 
   const [otherUserPhoto, setOtherUserPhoto] =
   useState<string | null>(null);
@@ -404,6 +427,156 @@ function scrollToReply(messageId: string) {
   }, 2000);
 }
 
+async function startRecording() {
+  try {
+    const permission =
+      await Audio.requestPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Permissão necessária",
+        "Permita o acesso ao microfone."
+      );
+      return;
+    }
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+
+    const result =
+      await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+    setRecording(result.recording);
+    setIsRecording(true);
+  } catch (error) {
+    console.log(error);
+
+    Alert.alert(
+      "Erro",
+      "Não foi possível iniciar a gravação."
+    );
+  }
+}
+
+async function stopRecording() {
+  if (!recording || !user || !id) {
+    return;
+  }
+
+  try {
+    await recording.stopAndUnloadAsync();
+
+    const uri = recording.getURI();
+
+    if (!uri) {
+      return;
+    }
+
+    const audioUrl =
+      await uploadAudio(uri);
+
+    await sendMessage({
+      conversationId: id,
+      senderId: user.id,
+      senderName: user.name,
+      type: "audio",
+      audioUrl,
+    });
+
+    setRecording(null);
+    setIsRecording(false);
+  } catch (error) {
+    console.log(error);
+
+    Alert.alert(
+      "Erro",
+      "Não foi possível enviar o áudio."
+    );
+  }
+}
+
+async function playAudio(
+  messageId: string,
+  audioUrl: string
+) {
+  try {
+    // Se clicar no mesmo áudio que já está tocando, pausa
+    if (sound && playingId === messageId) {
+      const status = await sound.getStatusAsync();
+
+      if (status.isLoaded) {
+  if (status.isPlaying) {
+    await sound.pauseAsync();
+    setIsPlaying(false);
+  } else {
+    await sound.playAsync();
+    setIsPlaying(true);
+  }
+}
+
+      return;
+    }
+
+    // Se outro áudio estiver tocando
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+    }
+
+    const { sound: newSound } =
+      await Audio.Sound.createAsync({
+        uri: audioUrl,
+      });
+
+    setSound(newSound);
+    setPlayingId(messageId);
+    setIsPlaying(true);
+
+    await newSound.playAsync();
+
+    newSound.setOnPlaybackStatusUpdate(
+    (status) => {
+    if (!status.isLoaded) return;
+
+    setPosition(status.positionMillis);
+    setDuration(status.durationMillis ?? 0);
+
+    if (status.didJustFinish) {
+      setPlayingId(null);
+      setIsPlaying(false);
+      setPosition(0);
+      setDuration(0);
+
+      newSound.unloadAsync();
+      setSound(null);
+    }
+  }
+);
+  } catch (error) {
+    console.log(error);
+
+    Alert.alert(
+      "Erro",
+      "Não foi possível reproduzir o áudio."
+    );
+  }
+}
+
+function formatTime(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+
+  const minutes = Math.floor(totalSeconds / 60);
+
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
     return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -645,24 +818,30 @@ function scrollToReply(messageId: string) {
   </Text>
 ) : (
   (!item.type || item.type === "text") && (
-    <View>
-      <Text
-        style={[
-          styles.messageText,
-          isMine && styles.myMessageText,
-        ]}
-      >
-        {item.text}
-      </Text>
+    <View
+  style={{
+    flexDirection: "row",
+    alignItems: "flex-end",
+  }}
+>
+  <Text
+    style={[
+      styles.messageText,
+      isMine && styles.myMessageText,
+    ]}
+  >
+    {item.text}
+  </Text>
 
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          marginTop: 4,
-        }}
-      >
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      marginLeft: 6,
+      marginBottom: 1,
+      alignSelf: "flex-end",
+    }}
+  >
         <Text style={{ fontSize: 11, color: isMine ? "#EAEAEA" : "#888", marginRight: 4 }}>
           {item.createdAt?.toDate
             ? item.createdAt.toDate().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
@@ -693,6 +872,45 @@ function scrollToReply(messageId: string) {
                           style={styles.chatImage}
                           resizeMode="cover"
                         />
+
+                        <View
+  style={{
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginTop: 6,
+    paddingHorizontal: 6,
+  }}
+>
+  <Text
+    style={{
+      fontSize: 11,
+      color: isMine ? "#EAEAEA" : "#888",
+      marginRight: 4,
+    }}
+  >
+    {item.createdAt?.toDate
+      ? item.createdAt
+          .toDate()
+          .toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+      : ""}
+  </Text>
+
+  {isMine && (
+    <Ionicons
+      name={statusIcon}
+      size={16}
+      color={
+        item.status === "read"
+          ? "#4FC3F7"
+          : "#FFFFFF"
+      }
+    />
+  )}
+</View>
                       </Pressable>
                   )}
 
@@ -710,32 +928,83 @@ function scrollToReply(messageId: string) {
                       </Text>
                     )}
 
-                  {!item.deleted &&
-                  item.type === "audio" && (
-                    <View style={styles.audioBubble}>
-                      <Ionicons
-                        name="mic"
-                        size={20}
-                        color={
-                          isMine
-                            ? "#FFFFFF"
-                            : "#1677FF"
-                        }
-                      />
+                 {!item.deleted &&
+item.type === "audio" &&
+item.audioUrl && (
+  <View style={styles.audioBubble}>
 
-                      <Text
-                        style={[
-                          styles.audioText,
-                          isMine &&
-                            styles.myAudioText,
-                        ]}
-                        
-                      >
-                        Áudio
-                      </Text>
+    <Pressable
+      onPress={() =>
+        playAudio(
+          item.id,
+          item.audioUrl!
+        )
+      }
+    >
+      <Ionicons
+        name={
+          playingId === item.id &&
+          isPlaying
+            ? "pause"
+            : "play"
+        }
+        size={22}
+        color={
+          isMine
+            ? "#FFF"
+            : "#1677FF"
+        }
+      />
+    </Pressable>
+
+    
+      <View
+  style={{
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 12,
+  }}
+>
+  {Array.from({ length: 26 }).map((_, index) => (
+    <View
+      key={index}
+      style={{
+        width: 3,
+        height: 8 + (index % 5) * 4,
+        borderRadius: 2,
+
+        backgroundColor:
+          playingId === item.id &&
+          duration > 0 &&
+          index <
+            (position / duration) * 26
+            ? "#FFFFFF"
+            : isMine
+            ? "rgba(255,255,255,0.35)"
+            : "#BFC7D5",
+      }}
+    />
+  ))}
+</View>
+
+    <Text
+      style={{
+        fontSize: 11,
+        color: isMine
+          ? "#FFF"
+          : "#555",
+      }}
+    >
+      {playingId === item.id
+        ? formatTime(position)
+        : "0:00"}
+    </Text>
+
+  </View>
+)}
                     </View>
-                  )}
-                </View>
               </Pressable>
             </View>
           );
@@ -858,6 +1127,34 @@ function scrollToReply(messageId: string) {
             color="#1677FF"
           />
         </Pressable>
+
+        <Pressable
+  style={[
+    styles.attachButton,
+    isSending &&
+      styles.disabledButton,
+  ]}
+  onPress={
+    isRecording
+      ? stopRecording
+      : startRecording
+  }
+  disabled={isSending}
+>
+  <Ionicons
+    name={
+      isRecording
+        ? "stop-circle"
+        : "mic"
+    }
+    size={24}
+    color={
+      isRecording
+        ? "#FF3B30"
+        : "#1677FF"
+    }
+  />
+</Pressable>
 
         <TextInput
           style={styles.input}
@@ -1067,6 +1364,32 @@ function scrollToReply(messageId: string) {
     </View>
   </Pressable>
 </Modal>
+
+  <Modal
+  visible={previewVisible}
+  transparent
+  animationType="fade"
+>
+  <Pressable
+    style={{
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.95)",
+      justifyContent: "center",
+      alignItems: "center",
+    }}
+    onPress={() => setPreviewVisible(false)}
+  >
+    <Image
+      source={{ uri: previewImage }}
+      style={{
+        width: "100%",
+        height: "80%",
+      }}
+      resizeMode="contain"
+    />
+  </Pressable>
+</Modal>
+
     </KeyboardAvoidingView>
   );
 }
@@ -1183,6 +1506,7 @@ messageText: {
   fontSize: 15,
   color: "#333333",
   lineHeight: 21,
+  flexShrink: 1,
 },
 
 myMessageText: {
@@ -1204,7 +1528,10 @@ imageCaption: {
 audioBubble: {
   flexDirection: "row",
   alignItems: "center",
-  gap: 8,
+  width: 260,
+  height: 56,
+  paddingHorizontal: 14,
+  borderRadius: 28,
 },
 
 audioText: {
