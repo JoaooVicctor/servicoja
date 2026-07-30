@@ -240,7 +240,7 @@ const [otherUserLastSeen, setOtherUserLastSeen] =
         );
 
         setOtherUserPhoto(
-          userData.photo ?? null
+          userData.photoURL ?? null
         );
       },
       (error) => {
@@ -645,59 +645,35 @@ function scrollToReply(messageId: string) {
   </Text>
 ) : (
   (!item.type || item.type === "text") && (
-    <View
-  style={{
-    flexDirection: "row",
-    alignItems: "flex-end",
-  }}
->
-  <Text
-    style={[
-      styles.messageText,
-      isMine && styles.myMessageText,
-      { flex: 1 },
-    ]}
-  >
-    {item.text}
-  </Text>
+    <View>
+      <Text
+        style={[
+          styles.messageText,
+          isMine && styles.myMessageText,
+        ]}
+      >
+        {item.text}
+      </Text>
 
-  <View
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      marginLeft: 8,
-    }}
-  >
-    <Text
-      style={{
-        fontSize: 11,
-        color: isMine ? "#EAEAEA" : "#888",
-        marginRight: 4,
-      }}
-    >
-      {item.createdAt?.toDate
-        ? item.createdAt
-            .toDate()
-            .toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-        : ""}
-    </Text>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          marginTop: 4,
+        }}
+      >
+        <Text style={{ fontSize: 11, color: isMine ? "#EAEAEA" : "#888", marginRight: 4 }}>
+          {item.createdAt?.toDate
+            ? item.createdAt.toDate().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+            : ""}
+        </Text>
 
-    {isMine && (
-      <Ionicons
-        name={statusIcon}
-        size={16}
-        color={
-          item.status === "read"
-            ? "#4FC3F7"
-            : "#FFFFFF"
-        }
-      />
-    )}
-  </View>
-</View>
+        {isMine && (
+          <Ionicons name={statusIcon} size={16} color={item.status === "read" ? "#4FC3F7" : "#FFFFFF"} />
+        )}
+      </View>
+    </View>
   )
 )}
 
@@ -1179,6 +1155,7 @@ messageBubble: {
   borderRadius: 16,
   paddingHorizontal: 13,
   paddingVertical: 10,
+  alignSelf: "flex-start",
 },
 
 imageMessageBubble: {

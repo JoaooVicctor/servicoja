@@ -2,6 +2,7 @@ import { db } from "@/src/services/firebase";
 
 import {
   addDoc,
+  arrayRemove,
   arrayUnion,
   collection,
   doc,
@@ -124,8 +125,19 @@ export async function startConversation(
     );
 
   if (existingConversation) {
-    return existingConversation.id;
-  }
+  await updateDoc(
+    doc(
+      db,
+      "conversations",
+      existingConversation.id
+    ),
+    {
+      hiddenFor: arrayRemove(customerId),
+    }
+  );
+
+  return existingConversation.id;
+}
 
   const conversationReference = doc(
     conversationsReference
@@ -559,4 +571,20 @@ export async function markMessagesAsDelivered(
   );
 
   await Promise.all(updates);
+}
+
+export async function hideConversation(
+  conversationId: string,
+  userId: string
+) {
+  if (!conversationId || !userId) {
+    return;
+  }
+
+  await updateDoc(
+    doc(db, "conversations", conversationId),
+    {
+      hiddenFor: arrayUnion(userId),
+    }
+  );
 }

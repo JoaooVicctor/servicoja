@@ -1,4 +1,5 @@
 import { useUser } from "@/src/contexts/UserContext";
+import { hideConversation } from "@/src/services/chat";
 import { db } from "@/src/services/firebase";
 import { Conversation } from "@/src/types/Chat";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +16,7 @@ import { useEffect, useState } from "react";
 
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Platform,
@@ -52,28 +54,40 @@ export default function ConversationsScreen() {
     const unsubscribe = onSnapshot(
       conversationsQuery,
       (snapshot) => {
-        const loadedConversations =
-          snapshot.docs.map((document) => ({
-            id: document.id,
-            ...(document.data() as Omit<
-              Conversation,
-              "id"
-            >),
-          }));
+       const loadedConversations =
+  snapshot.docs.map((document) => ({
+    id: document.id,
+    ...(document.data() as Omit<
+      Conversation,
+      "id"
+    >),
+  }));
 
-        loadedConversations.sort((a, b) => {
-          const timeA =
-            a.lastMessageAt?.toMillis?.() ?? 0;
+const visibleConversations =
+  loadedConversations.filter(
+    (conversation) =>
+      !conversation.hiddenFor?.includes(
+        user.id
+      )
+  );
 
-          const timeB =
-            b.lastMessageAt?.toMillis?.() ?? 0;
+visibleConversations.sort((a, b) => {
+  const timeA =
+    a.lastMessageAt?.toMillis?.() ?? 0;
 
-          return timeB - timeA;
-        });
+  const timeB =
+    b.lastMessageAt?.toMillis?.() ?? 0;
 
-        setConversations(
-          loadedConversations
-        );
+  return timeB - timeA;
+});
+
+setConversations(
+  visibleConversations
+);
+
+setIsLoading(false);
+
+        
 
         setIsLoading(false);
       },
@@ -100,6 +114,33 @@ export default function ConversationsScreen() {
       },
     });
   }
+
+  async function deleteConversation(
+  conversationId: string
+) {
+  if (!user?.id) return;
+
+  Alert.alert(
+    "Apagar conversa",
+    "Deseja remover esta conversa da sua lista?",
+    [
+      {
+        text: "Cancelar",
+        style: "cancel",
+      },
+      {
+        text: "Apagar",
+        style: "destructive",
+        onPress: async () => {
+          await hideConversation(
+            conversationId,
+            user.id
+          );
+        },
+      },
+    ]
+  );
+}
 
   function getOtherPersonName(
     conversation: Conversation
@@ -234,6 +275,7 @@ export default function ConversationsScreen() {
           </View>
         }
         renderItem={({ item }) => {
+          console.log("ITEM MOBILE:", JSON.stringify(item)); // ADICIONE ESSA LINHA
           const otherPersonName =
             getOtherPersonName(item);
 
@@ -243,6 +285,10 @@ export default function ConversationsScreen() {
               onPress={() =>
                 openConversation(item.id)
               }
+              onLongPress={() =>
+                deleteConversation(item.id)
+              }
+              delayLongPress={300}
             >
               {item.serviceImage ? (
                 <Image

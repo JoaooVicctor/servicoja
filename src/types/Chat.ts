@@ -20,6 +20,8 @@ export interface Conversation {
   ownerId: string;
   ownerName: string;
 
+  hiddenFor?: string[];
+
   lastMessage: string;
   lastMessageId?: string;
   lastMessageAt: any;
