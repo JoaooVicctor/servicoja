@@ -1,6 +1,7 @@
 import { FavoritesProvider } from "@/src/contexts/FavoritesContext";
 import { ServiceProvider } from "@/src/contexts/ServiceContext";
 import { UserProvider, useUser } from "@/src/contexts/UserContext";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from "react-native-toast-message";
 
 import {
@@ -71,12 +72,14 @@ function AppContent() {
 
 export default function RootLayout() {
   return (
-    <UserProvider>
-      <ServiceProvider>
-        <FavoritesProvider>
-          <AppContent />
-        </FavoritesProvider>
-      </ServiceProvider>
-    </UserProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <UserProvider>
+        <ServiceProvider>
+          <FavoritesProvider>
+            <AppContent />
+          </FavoritesProvider>
+        </ServiceProvider>
+      </UserProvider>
+    </GestureHandlerRootView>
   );
 }

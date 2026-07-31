@@ -1,3 +1,4 @@
+import { AudioPlayerV2 } from "@/src/components/AudioPlayerV2";
 import { useUser } from "@/src/contexts/UserContext";
 import { uploadAudio } from "@/src/services/audio";
 import {
@@ -36,6 +37,7 @@ import {
 
 import {
   Alert,
+  Animated,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -107,6 +109,11 @@ const [recording, setRecording] =
 const [isRecording, setIsRecording] =
   useState(false);
 
+const [recordingDuration, setRecordingDuration] = useState(0);
+const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+const pulseAnim = useRef(new Animated.Value(1)).current;
+const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
 const [sound, setSound] =
   useState<Audio.Sound | null>(null);
 
@@ -121,6 +128,18 @@ const [position, setPosition] =
 
 const [duration, setDuration] =
   useState(0);
+
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+const isSeekingRef = useRef(false);
+
+const currentAudioIdRef = useRef<string | null>(null);
+
+
+const pendingLoadRef = useRef<Promise<Audio.Sound> | null>(null);
+
+const [playbackRate, setPlaybackRate] =
+  useState(1);
 
   const [otherUserPhoto, setOtherUserPhoto] =
   useState<string | null>(null);
@@ -192,6 +211,36 @@ const [duration, setDuration] =
 
   return unsubscribe;
 }, [id, user?.id]);
+
+useEffect(() => {
+  if (!playingId) {
+    return;
+  }
+
+  const playingMessage = messages.find(
+    (message) => message.id === playingId
+  );
+
+  const shouldStop =
+    !playingMessage ||
+    playingMessage.deleted ||
+    playingMessage.hiddenForMe;
+
+  if (shouldStop) {
+    if (soundRef.current) {
+      soundRef.current.stopAsync();
+      soundRef.current.unloadAsync();
+      soundRef.current = null;
+    }
+
+    setSound(null);
+    setPlayingId(null);
+    setIsPlaying(false);
+    setPosition(0);
+    setDuration(0);
+    currentAudioIdRef.current = null;
+  }
+}, [messages, playingId]);
 
   useEffect(() => {
     if (messages.length === 0) {
@@ -452,6 +501,27 @@ async function startRecording() {
 
     setRecording(result.recording);
     setIsRecording(true);
+    setRecordingDuration(0);
+
+    recordingIntervalRef.current = setInterval(() => {
+      setRecordingDuration((prev) => prev + 1);
+    }, 1000);
+
+    pulseLoopRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.4,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoopRef.current.start();
   } catch (error) {
     console.log(error);
 
@@ -462,15 +532,33 @@ async function startRecording() {
   }
 }
 
+function stopRecordingTimers() {
+  if (recordingIntervalRef.current) {
+    clearInterval(recordingIntervalRef.current);
+    recordingIntervalRef.current = null;
+  }
+
+  pulseLoopRef.current?.stop();
+  pulseAnim.setValue(1);
+}
+
 async function stopRecording() {
   if (!recording || !user || !id) {
     return;
   }
 
+  // volta a interface ao normal IMEDIATAMENTE,
+  // sem esperar upload/envio terminarem
+  setIsRecording(false);
+  stopRecordingTimers();
+
   try {
     await recording.stopAndUnloadAsync();
 
     const uri = recording.getURI();
+
+    setRecording(null);
+    setRecordingDuration(0);
 
     if (!uri) {
       return;
@@ -486,9 +574,6 @@ async function stopRecording() {
       type: "audio",
       audioUrl,
     });
-
-    setRecording(null);
-    setIsRecording(false);
   } catch (error) {
     console.log(error);
 
@@ -499,12 +584,32 @@ async function stopRecording() {
   }
 }
 
+async function cancelRecording() {
+  if (!recording) {
+    setIsRecording(false);
+    stopRecordingTimers();
+    return;
+  }
+
+  setIsRecording(false);
+  stopRecordingTimers();
+
+  try {
+    await recording.stopAndUnloadAsync();
+  } catch (error) {
+    console.log(error);
+  } finally {
+    setRecording(null);
+    setRecordingDuration(0);
+  }
+}
+
 async function playAudio(
   messageId: string,
   audioUrl: string
 ) {
   try {
-    // Se clicar no mesmo áudio que já está tocando, pausa
+  
     if (sound && playingId === messageId) {
       const status = await sound.getStatusAsync();
 
@@ -534,19 +639,29 @@ async function playAudio(
       });
 
     setSound(newSound);
+    soundRef.current = newSound;
+    currentAudioIdRef.current = messageId;
     setPlayingId(messageId);
     setIsPlaying(true);
 
     await newSound.playAsync();
 
+    await newSound.setRateAsync(
+      playbackRate,
+      true
+    );
+
     newSound.setOnPlaybackStatusUpdate(
     (status) => {
     if (!status.isLoaded) return;
 
-    setPosition(status.positionMillis);
-    setDuration(status.durationMillis ?? 0);
+    if (!isSeekingRef.current) {
+      setPosition(status.positionMillis);
+      setDuration(status.durationMillis ?? 0);
+    }
 
     if (status.didJustFinish) {
+      currentAudioIdRef.current = null;
       setPlayingId(null);
       setIsPlaying(false);
       setPosition(0);
@@ -554,6 +669,7 @@ async function playAudio(
 
       newSound.unloadAsync();
       setSound(null);
+      soundRef.current = null;
     }
   }
 );
@@ -575,6 +691,146 @@ function formatTime(ms: number) {
   const seconds = totalSeconds % 60;
 
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatRecordingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+async function seekAudio(
+  messageId: string,
+  progress: number
+) {
+  if (!Number.isFinite(progress)) {
+    return;
+  }
+
+  // se tiver um carregamento em andamento (áudio sendo trocado),
+  // espera ele terminar antes de aplicar o seek
+  let targetSound = soundRef.current;
+
+  if (pendingLoadRef.current) {
+    targetSound = await pendingLoadRef.current;
+  }
+
+  if (!targetSound || currentAudioIdRef.current !== messageId) {
+    return;
+  }
+
+  const status = await targetSound.getStatusAsync();
+
+  if (!status.isLoaded || !status.durationMillis) {
+    return;
+  }
+
+  const positionMillis = Math.max(
+    0,
+    Math.min(status.durationMillis, status.durationMillis * progress)
+  );
+
+  setPosition(positionMillis);
+
+  await targetSound.setPositionAsync(positionMillis);
+}
+
+async function handleSeekStart(
+  messageId: string,
+  audioUrl: string
+) {
+  isSeekingRef.current = true;
+  currentAudioIdRef.current = messageId;
+
+  if (playingId === messageId && soundRef.current) {
+    return;
+  }
+
+  const loadPromise = (async () => {
+    if (soundRef.current) {
+      await soundRef.current.stopAsync();
+      await soundRef.current.unloadAsync();
+      setSound(null);
+      soundRef.current = null;
+    }
+
+    const { sound: newSound } = await Audio.Sound.createAsync(
+      { uri: audioUrl },
+      { shouldPlay: false }
+    );
+
+    setSound(newSound);
+    soundRef.current = newSound;
+    setPlayingId(messageId);
+    setIsPlaying(false);
+    setPosition(0);
+    setDuration(0);
+
+    newSound.setOnPlaybackStatusUpdate((status) => {
+      if (!status.isLoaded) return;
+
+      if (!isSeekingRef.current) {
+        setPosition(status.positionMillis);
+        setDuration(status.durationMillis ?? 0);
+      }
+
+      if (status.didJustFinish) {
+        currentAudioIdRef.current = null;
+        setPlayingId(null);
+        setIsPlaying(false);
+        setPosition(0);
+        setDuration(0);
+
+        newSound.unloadAsync();
+        setSound(null);
+        soundRef.current = null;
+      }
+    });
+
+    return newSound;
+  })();
+
+  pendingLoadRef.current = loadPromise;
+
+  try {
+    await loadPromise;
+  } catch (error) {
+    console.log(error);
+  } finally {
+    pendingLoadRef.current = null;
+  }
+}
+
+async function handleSeekEnd() {
+  isSeekingRef.current = false;
+}
+
+async function changePlaybackSpeed() {
+  if (!sound) return;
+
+  let nextRate: number;
+
+  switch (playbackRate) {
+    case 1:
+      nextRate = 1.5;
+      break;
+
+    case 1.5:
+      nextRate = 2;
+      break;
+
+    default:
+      nextRate = 1;
+      break;
+  }
+
+  await sound.setRateAsync(
+    nextRate,
+    true
+  );
+
+  setPlaybackRate(nextRate);
 }
 
     return (
@@ -931,79 +1187,52 @@ function formatTime(ms: number) {
                  {!item.deleted &&
 item.type === "audio" &&
 item.audioUrl && (
-  <View style={styles.audioBubble}>
-
-    <Pressable
-      onPress={() =>
-        playAudio(
-          item.id,
-          item.audioUrl!
-        )
-      }
-    >
-      <Ionicons
-        name={
-          playingId === item.id &&
-          isPlaying
-            ? "pause"
-            : "play"
-        }
-        size={22}
-        color={
-          isMine
-            ? "#FFF"
-            : "#1677FF"
-        }
-      />
-    </Pressable>
-
-    
-      <View
-  style={{
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginHorizontal: 12,
-  }}
->
-  {Array.from({ length: 26 }).map((_, index) => (
-    <View
-      key={index}
-      style={{
-        width: 3,
-        height: 8 + (index % 5) * 4,
-        borderRadius: 2,
-
-        backgroundColor:
-          playingId === item.id &&
-          duration > 0 &&
-          index <
-            (position / duration) * 26
-            ? "#FFFFFF"
-            : isMine
-            ? "rgba(255,255,255,0.35)"
-            : "#BFC7D5",
-      }}
-    />
-  ))}
-</View>
-
-    <Text
-      style={{
-        fontSize: 11,
-        color: isMine
-          ? "#FFF"
-          : "#555",
-      }}
-    >
-      {playingId === item.id
-        ? formatTime(position)
-        : "0:00"}
-    </Text>
-
-  </View>
-)}
+  <AudioPlayerV2
+  isMine={isMine}
+  isPlaying={
+    playingId === item.id &&
+    isPlaying
+  }
+  currentTime={
+    playingId === item.id
+      ? formatTime(position)
+      : "0:00"
+  }
+  duration={
+    playingId === item.id
+      ? formatTime(duration)
+      : "0:00"
+  }
+  progress={
+    playingId === item.id &&
+    duration > 0
+      ? position / duration
+      : 0
+  }
+  playbackRate={playbackRate}
+  messageTime={
+    item.createdAt?.toDate
+      ? item.createdAt
+          .toDate()
+          .toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+      : ""
+  }
+  status={item.status}
+  onPlayPause={() =>
+    playAudio(
+      item.id,
+      item.audioUrl!
+    )
+  }
+ onSeek={(progress) => seekAudio(item.id, progress)}
+  onSeekStart={() => handleSeekStart(item.id, item.audioUrl!)}
+  onSeekEnd={handleSeekEnd}
+  onChangeSpeed={changePlaybackSpeed}
+/>
+) }
                     </View>
               </Pressable>
             </View>
@@ -1111,80 +1340,113 @@ item.audioUrl && (
   </View>
 )}
 
-            <View style={styles.inputContainer}>
-        <Pressable
-          style={[
-            styles.attachButton,
-            isSending &&
-              styles.disabledButton,
-          ]}
-          onPress={handleSendImage}
-          disabled={isSending}
-        >
-          <Ionicons
-            name="image"
-            size={24}
-            color="#1677FF"
-          />
-        </Pressable>
+        <View style={styles.inputContainer}>
+        {isRecording ? (
+          <>
+            <Pressable
+              style={styles.attachButton}
+              onPress={cancelRecording}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={24}
+                color="#FF3B30"
+              />
+            </Pressable>
 
-        <Pressable
-  style={[
-    styles.attachButton,
-    isSending &&
-      styles.disabledButton,
-  ]}
-  onPress={
-    isRecording
-      ? stopRecording
-      : startRecording
-  }
-  disabled={isSending}
->
-  <Ionicons
-    name={
-      isRecording
-        ? "stop-circle"
-        : "mic"
-    }
-    size={24}
-    color={
-      isRecording
-        ? "#FF3B30"
-        : "#1677FF"
-    }
-  />
-</Pressable>
+            <View style={styles.recordingBar}>
+              <Animated.View
+                style={[
+                  styles.recordingDot,
+                  { transform: [{ scale: pulseAnim }] },
+                ]}
+              />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Digite uma mensagem..."
-          placeholderTextColor="#929292"
-          value={text}
-          onChangeText={setText}
-          multiline
-        />
+              <Text style={styles.recordingTimer}>
+                {formatRecordingTime(recordingDuration)}
+              </Text>
 
-        <Pressable
-          style={[
-          styles.sendButton,
-          ((!text.trim() && !selectedImage) ||
-            isSending) &&
-            styles.disabledButton,
-        ]}
-          onPress={handleSendMessage}
-          disabled={
-          (!text.trim() && !selectedImage) ||
-          isSending
-          }
-          >
-          <Ionicons
-            name="send"
-            size={21}
-            color="#FFFFFF"
-          />
-        </Pressable>
-      </View>
+              <Text style={styles.recordingHint}>
+                Gravando áudio...
+              </Text>
+            </View>
+
+            <Pressable
+              style={styles.recordingStopButton}
+              onPress={stopRecording}
+            >
+              <Ionicons
+                name="send"
+                size={20}
+                color="#FFFFFF"
+              />
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Pressable
+              style={[
+                styles.attachButton,
+                isSending &&
+                  styles.disabledButton,
+              ]}
+              onPress={handleSendImage}
+              disabled={isSending}
+            >
+              <Ionicons
+                name="image"
+                size={24}
+                color="#1677FF"
+              />
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.attachButton,
+                isSending &&
+                  styles.disabledButton,
+              ]}
+              onPress={startRecording}
+              disabled={isSending}
+            >
+              <Ionicons
+                name="mic"
+                size={24}
+                color="#1677FF"
+              />
+            </Pressable>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Digite uma mensagem..."
+              placeholderTextColor="#929292"
+              value={text}
+              onChangeText={setText}
+              multiline
+            />
+
+            <Pressable
+              style={[
+                styles.sendButton,
+                ((!text.trim() && !selectedImage) ||
+                  isSending) &&
+                  styles.disabledButton,
+              ]}
+              onPress={handleSendMessage}
+              disabled={
+                (!text.trim() && !selectedImage) ||
+                isSending
+              }
+            >
+              <Ionicons
+                name="send"
+                size={21}
+                color="#FFFFFF"
+              />
+            </Pressable>
+          </>
+        )}
+      </View>    
       <Modal
   visible={menuVisible}
   transparent
@@ -1588,5 +1850,44 @@ sendButton: {
 
 disabledButton: {
   opacity: 0.5,
+},
+
+recordingBar: {
+  flex: 1,
+  height: 46,
+  borderRadius: 23,
+  backgroundColor: "#FFF0F0",
+  flexDirection: "row",
+  alignItems: "center",
+  paddingHorizontal: 14,
+  gap: 10,
+},
+
+recordingDot: {
+  width: 12,
+  height: 12,
+  borderRadius: 6,
+  backgroundColor: "#FF3B30",
+},
+
+recordingTimer: {
+  fontSize: 15,
+  fontWeight: "700",
+  color: "#FF3B30",
+},
+
+recordingHint: {
+  fontSize: 13,
+  color: "#999999",
+  flex: 1,
+},
+
+recordingStopButton: {
+  width: 46,
+  height: 46,
+  borderRadius: 23,
+  backgroundColor: "#FF3B30",
+  alignItems: "center",
+  justifyContent: "center",
 },
 });
