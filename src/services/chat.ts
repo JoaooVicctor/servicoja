@@ -9,9 +9,11 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
+  Unsubscribe,
   updateDoc,
   where
 } from "firebase/firestore";
@@ -588,3 +590,42 @@ export async function hideConversation(
     }
   );
 }
+export async function setTyping(
+  conversationId: string,
+  userId: string,
+  typing: boolean
+) {
+  if (!conversationId || !userId) {
+    return;
+  }
+
+  await updateDoc(
+    doc(db, "conversations", conversationId),
+    {
+      [`typing.${userId}`]: typing,
+    }
+  );
+}
+
+export function listenTyping(
+  conversationId: string,
+  callback: (typing: Record<string, boolean>) => void
+): Unsubscribe {
+
+  return onSnapshot(
+    doc(db, "conversations", conversationId),
+    (snapshot) => {
+
+      if (!snapshot.exists()) {
+        callback({});
+        return;
+      }
+
+      const data = snapshot.data();
+
+      callback(data.typing ?? {});
+    }
+  );
+}
+
+

@@ -4,8 +4,10 @@ import { uploadAudio } from "@/src/services/audio";
 import {
   deleteMessageForEveryone,
   deleteMessageForMe,
+  listenTyping,
   markMessagesAsDelivered,
   sendMessage,
+  setTyping,
 } from "@/src/services/chat";
 import { uploadImage } from "@/src/services/cloudinary";
 import { db } from "@/src/services/firebase";
@@ -57,6 +59,7 @@ export default function ChatScreen() {
 
   const { user } = useUser();
 
+
   const flatListRef =
     useRef<FlatList<ChatMessage>>(null);
 
@@ -67,6 +70,15 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<
     ChatMessage[]
   >([]);
+
+  const otherUserId =
+  user?.id === undefined
+    ? ""
+    : messages.length > 0
+    ? messages.find(
+        (m) => m.senderId !== user.id
+      )?.senderId ?? ""
+    : "";
 
   const [text, setText] = useState("");
 
@@ -108,6 +120,12 @@ const [recording, setRecording] =
 
 const [isRecording, setIsRecording] =
   useState(false);
+
+const [isOtherUserTyping, setIsOtherUserTyping] =
+  useState(false);
+
+const typingTimeoutRef =
+  useRef<ReturnType<typeof setTimeout> | null>(null);
 
 const [recordingDuration, setRecordingDuration] = useState(0);
 const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -211,6 +229,23 @@ const [playbackRate, setPlaybackRate] =
 
   return unsubscribe;
 }, [id, user?.id]);
+
+useEffect(() => {
+  if (!id || !otherUserId) {
+    return;
+  }
+
+  const unsubscribe =
+    listenTyping(id, (typing) => {
+      setIsOtherUserTyping(
+        typing[otherUserId] === true
+      );
+    });
+
+  return unsubscribe;
+}, [id, otherUserId]);
+
+
 
 useEffect(() => {
   if (!playingId) {
@@ -392,6 +427,7 @@ useEffect(() => {
       });
 
       setText("");
+      await setTyping(id, user.id, false);
       setReplyMessage(null);
     }
     } catch (error) {
@@ -894,17 +930,19 @@ async function changePlaybackSpeed() {
             </Text>
 
             <Text style={styles.headerSubtitle}>
-              {otherUserOnline
-                ? "🟢 Online"
-                : otherUserLastSeen
-                ? `Visto por último às ${otherUserLastSeen
-                    .toDate()
-                    .toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}`
-                : "Offline"}
-            </Text>
+            {isOtherUserTyping
+              ? "✍️ Digitando..."
+              : otherUserOnline
+              ? "🟢 Online"
+              : otherUserLastSeen
+              ? `Visto por último às ${otherUserLastSeen
+                  .toDate()
+                  .toLocaleTimeString("pt-BR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`
+              : "Offline"}
+          </Text>
           </View>
         </View>
       </View>
@@ -1421,7 +1459,25 @@ item.audioUrl && (
               placeholder="Digite uma mensagem..."
               placeholderTextColor="#929292"
               value={text}
-              onChangeText={setText}
+              onChangeText={(value) => {
+  setText(value);
+
+  if (!id || !user?.id) {
+    return;
+  }
+
+  setTyping(id, user.id, value.length > 0);
+
+  if (typingTimeoutRef.current) {
+    clearTimeout(typingTimeoutRef.current);
+  }
+
+  typingTimeoutRef.current = setTimeout(async () => {
+  if (id && user?.id) {
+    await setTyping(id, user.id, false);
+  }
+}, 1000);
+}}
               multiline
             />
 
