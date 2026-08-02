@@ -1,4 +1,8 @@
 import { db } from "@/src/services/firebase";
+import type {
+  MessageType,
+  ReplyMessage,
+} from "@/src/types/Chat";
 
 import {
   addDoc,
@@ -18,10 +22,6 @@ import {
   where
 } from "firebase/firestore";
 
-export type MessageType =
-  | "text"
-  | "image"
-  | "audio";
 
 export interface StartConversationData {
   serviceId: string;
@@ -46,19 +46,23 @@ export interface SendMessageData {
   type: MessageType;
 
   text?: string;
+
   imageUrl?: string;
+
   audioUrl?: string;
   duration?: number;
 
-  replyTo?: {
-    id: string;
-    senderId: string;
-    senderName: string;
-    type: MessageType;
-    text?: string;
-    imageUrl?: string;
-  };
+  documentUrl?: string;
+  documentName?: string;
+  documentSize?: number;
+
+  latitude?: number;
+  longitude?: number;
+  locationAddress?: string;
+
+  replyTo?: ReplyMessage;
 }
+
 
 export async function startConversation(
   data: StartConversationData
@@ -232,6 +236,15 @@ export async function sendMessage(
   imageUrl,
   audioUrl,
   duration,
+
+  documentUrl,
+  documentName,
+  documentSize,
+
+  latitude,
+  longitude,
+  locationAddress,
+
   replyTo,
 } = messageData;
 
@@ -270,6 +283,18 @@ export async function sendMessage(
       "O áudio não foi enviado."
     );
   }
+
+  if (
+  type === "location" &&
+  (
+    messageData.latitude === undefined ||
+    messageData.longitude === undefined
+  )
+) {
+  throw new Error(
+    "A localização não foi obtida."
+  );
+}
 
   const conversationReference = doc(
     db,
@@ -360,6 +385,18 @@ if (replyTo) {
     }
   }
 
+  if (type === "document") {
+  newMessage.documentUrl = documentUrl;
+  newMessage.documentName = documentName;
+  newMessage.documentSize = documentSize;
+}
+
+if (type === "location") {
+  newMessage.latitude = latitude;
+  newMessage.longitude = longitude;
+  newMessage.locationAddress = locationAddress;
+}
+
   const createdMessageReference =
   await addDoc(
     messagesReference,
@@ -379,6 +416,14 @@ if (replyTo) {
   if (type === "audio") {
     lastMessage = "🎤 Áudio";
   }
+
+  if (type === "document") {
+  lastMessage = "📄 Documento";
+  }
+
+  if (type === "location") {
+  lastMessage = "📍 Localização";
+}
 
   await updateDoc(
   conversationReference,
@@ -458,6 +503,13 @@ export async function deleteMessageForEveryone(
     text: "",
     imageUrl: "",
     audioUrl: "",
+    documentUrl: "",
+documentName: "",
+documentSize: null,
+
+latitude: null,
+longitude: null,
+locationAddress: "",
   });
 
   const conversationSnapshot =

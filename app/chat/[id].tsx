@@ -10,11 +10,15 @@ import {
   setTyping,
 } from "@/src/services/chat";
 import { uploadImage } from "@/src/services/cloudinary";
+import { uploadDocument } from "@/src/services/document";
 import { db } from "@/src/services/firebase";
+import { getCurrentLocation } from "@/src/services/location";
 import { ChatMessage } from "@/src/types/Chat";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
+import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
+import * as Linking from "expo-linking";
 
 import {
   router,
@@ -44,6 +48,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -51,6 +56,127 @@ import {
   TextInput,
   View
 } from "react-native";
+
+function SwipeableMessage({
+  isMine,
+  onReply,
+  disabled,
+  children,
+}: {
+  isMine: boolean;
+  onReply: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const replyIconOpacity = useRef(new Animated.Value(0)).current;
+  const hasTriggeredRef = useRef(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        if (disabled) return false;
+
+        return (
+          gestureState.dx < -10 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
+        );
+      },
+      onPanResponderGrant: () => {
+        hasTriggeredRef.current = false;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const dx = Math.max(gestureState.dx, -80);
+
+        translateX.setValue(dx);
+
+        replyIconOpacity.setValue(
+          Math.min(Math.abs(dx) / 55, 1)
+        );
+
+        if (dx <= -60 && !hasTriggeredRef.current) {
+          hasTriggeredRef.current = true;
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx < -60) {
+          onReply();
+        }
+
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          speed: 20,
+          bounciness: 6,
+        }).start();
+
+        Animated.timing(replyIconOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+
+        Animated.timing(replyIconOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
+      },
+    })
+  ).current;
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <Animated.View
+        style={{
+          position: "absolute",
+          right: 6,
+          opacity: replyIconOpacity,
+          transform: [
+            {
+              scale: replyIconOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.6, 1],
+              }),
+            },
+          ],
+        }}
+      >
+        <Ionicons
+          name="arrow-undo"
+          size={20}
+          color="#1677FF"
+        />
+      </Animated.View>
+
+      <Animated.View
+  {...panResponder.panHandlers}
+  style={{
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: isMine
+      ? "flex-end"
+      : "flex-start",
+    transform: [{ translateX }],
+  }}
+>
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{
@@ -88,6 +214,21 @@ export default function ChatScreen() {
   const [selectedImage, setSelectedImage] =
     useState<string | null>(null);
 
+    const [selectedDocument, setSelectedDocument] =
+    useState<{
+      uri: string;
+      name: string;
+      mimeType: string;
+      size: number;
+    } | null>(null);
+
+    const [selectedLocation, setSelectedLocation] =
+    useState<{
+      latitude: number;
+      longitude: number;
+      address: string;
+    } | null>(null);
+
   const [previewVisible, setPreviewVisible] =
     useState(false);
 
@@ -98,6 +239,11 @@ export default function ChatScreen() {
 
     const [highlightedMessageId, setHighlightedMessageId] =
     useState<string | null>(null);
+
+    const [pendingMessages, setPendingMessages] =
+    useState<any[]>([]);
+
+    const highlightAnim = useRef(new Animated.Value(0)).current;
 
     const [selectedMessage, setSelectedMessage] =
     useState<ChatMessage | null>(null);
@@ -378,9 +524,13 @@ useEffect(() => {
     return;
   }
 
-  if (!text.trim() && !selectedImage) {
-    return;
-  }
+ if (
+  !text.trim() &&
+  !selectedImage &&
+  !selectedDocument
+) {
+  return;
+}
 
   try {
     setIsSending(true);
@@ -391,32 +541,108 @@ useEffect(() => {
       senderId: replyMessage.senderId,
       senderName: replyMessage.senderName,
       type: replyMessage.type,
-      ...(replyMessage.text
-        ? { text: replyMessage.text }
-        : {}),
-      ...(replyMessage.imageUrl
-        ? { imageUrl: replyMessage.imageUrl }
-        : {}),
+
+      ...(replyMessage.text && {
+        text: replyMessage.text,
+      }),
+
+      ...(replyMessage.imageUrl && {
+        imageUrl: replyMessage.imageUrl,
+      }),
+
+      ...(replyMessage.audioUrl && {
+        audioUrl: replyMessage.audioUrl,
+      }),
+
+      ...(replyMessage.documentUrl && {
+        documentUrl: replyMessage.documentUrl,
+      }),
+
+      ...(replyMessage.documentName && {
+        documentName: replyMessage.documentName,
+      }),
+
+      ...(replyMessage.latitude !== undefined && {
+        latitude: replyMessage.latitude,
+      }),
+
+      ...(replyMessage.longitude !== undefined && {
+        longitude: replyMessage.longitude,
+      }),
+
+      ...(replyMessage.locationAddress && {
+        locationAddress:
+          replyMessage.locationAddress,
+      }),
     }
   : undefined;
 
     if (selectedImage) {
-      const imageUrl = await uploadImage(selectedImage);
+      const localUri = selectedImage;
+      const captionText = text.trim();
+      const tempId = `pending-${Date.now()}`;
 
-      await sendMessage({
-        conversationId: id,
-        senderId: user.id,
-        senderName: user.name,
-        type: "image",
-        imageUrl,
-        text: text.trim(),
-        replyTo: replyData,
-      });
+      setPendingMessages((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          senderId: user.id,
+          senderName: user.name,
+          type: "image",
+          imageUrl: localUri,
+          text: captionText,
+          createdAt: { toDate: () => new Date() },
+          status: "sent",
+          sending: true,
+        },
+      ]);
 
       setSelectedImage(null);
       setText("");
       setReplyMessage(null);
-    } else {
+
+      try {
+        const imageUrl = await uploadImage(localUri);
+
+        await sendMessage({
+          conversationId: id,
+          senderId: user.id,
+          senderName: user.name,
+          type: "image",
+          imageUrl,
+          text: captionText,
+          replyTo: replyData,
+        });
+      } finally {
+        setPendingMessages((prev) =>
+          prev.filter((message) => message.id !== tempId)
+        );
+      }
+    }
+    else if (selectedDocument) {
+  const documentUrl =
+    await uploadDocument(
+      selectedDocument.uri,
+      selectedDocument.name,
+      selectedDocument.mimeType
+    );
+
+  await sendMessage({
+    conversationId: id,
+    senderId: user.id,
+    senderName: user.name,
+    type: "document",
+    documentUrl,
+    documentName: selectedDocument.name,
+    documentSize: selectedDocument.size,
+    replyTo: replyData,
+  });
+
+  setSelectedDocument(null);
+  setText("");
+  setReplyMessage(null);
+}
+    else {
       await sendMessage({
         conversationId: id,
         senderId: user.id,
@@ -481,6 +707,68 @@ useEffect(() => {
   }
 }
 
+async function handleSendDocument() {
+  if (!user || !id || isSending) {
+    return;
+  }
+
+  try {
+    setIsSending(true);
+
+    const result =
+      await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const file = result.assets[0];
+
+    setSelectedDocument({
+    uri: file.uri,
+    name: file.name,
+    mimeType:
+      file.mimeType ??
+      "application/octet-stream",
+    size: file.size ?? 0,
+  });
+
+  } catch (error) {
+    console.log(error);
+
+    Alert.alert(
+      "Erro",
+      "Não foi possível enviar o documento."
+    );
+  } finally {
+    setIsSending(false);
+  }
+}
+
+async function handleSendLocation() {
+  try {
+    const location =
+      await getCurrentLocation();
+
+    setSelectedLocation({
+      latitude: location.latitude,
+      longitude: location.longitude,
+      address: location.address,
+    });
+
+  } catch (error) {
+    Alert.alert(
+      "Localização",
+      error instanceof Error
+        ? error.message
+        : "Não foi possível obter sua localização."
+    );
+  }
+}
+
 function handleLongPress(item: ChatMessage) {
   setSelectedMessage(item);
   setMenuVisible(true);
@@ -506,10 +794,21 @@ function scrollToReply(messageId: string) {
   }
 
   setHighlightedMessageId(messageId);
+  highlightAnim.setValue(0);
 
-  setTimeout(() => {
-    setHighlightedMessageId(null);
-  }, 2000);
+  Animated.sequence([
+    Animated.timing(highlightAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: false,
+    }),
+    Animated.delay(500),
+    Animated.timing(highlightAnim, {
+      toValue: 0,
+      duration: 700,
+      useNativeDriver: false,
+    }),
+  ]).start(() => setHighlightedMessageId(null));
 }
 
 async function startRecording() {
@@ -583,8 +882,6 @@ async function stopRecording() {
     return;
   }
 
-  // volta a interface ao normal IMEDIATAMENTE,
-  // sem esperar upload/envio terminarem
   setIsRecording(false);
   stopRecordingTimers();
 
@@ -600,16 +897,37 @@ async function stopRecording() {
       return;
     }
 
-    const audioUrl =
-      await uploadAudio(uri);
+    const tempId = `pending-${Date.now()}`;
 
-    await sendMessage({
-      conversationId: id,
-      senderId: user.id,
-      senderName: user.name,
-      type: "audio",
-      audioUrl,
-    });
+    setPendingMessages((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        senderId: user.id,
+        senderName: user.name,
+        type: "audio",
+        audioUrl: uri,
+        createdAt: { toDate: () => new Date() },
+        status: "sent",
+        sending: true,
+      },
+    ]);
+
+    try {
+      const audioUrl = await uploadAudio(uri);
+
+      await sendMessage({
+        conversationId: id,
+        senderId: user.id,
+        senderName: user.name,
+        type: "audio",
+        audioUrl,
+      });
+    } finally {
+      setPendingMessages((prev) =>
+        prev.filter((message) => message.id !== tempId)
+      );
+    }
   } catch (error) {
     console.log(error);
 
@@ -869,6 +1187,59 @@ async function changePlaybackSpeed() {
   setPlaybackRate(nextRate);
 }
 
+function getDocumentInfo(fileName?: string) {
+  const extension =
+    fileName?.split(".").pop()?.toLowerCase() ?? "";
+
+  switch (extension) {
+    case "pdf":
+      return {
+        icon: "document-text",
+        color: "#E53935",
+        type: "PDF",
+      };
+
+    case "doc":
+    case "docx":
+      return {
+        icon: "document",
+        color: "#1976D2",
+        type: "WORD",
+      };
+
+    case "xls":
+    case "xlsx":
+      return {
+        icon: "grid",
+        color: "#2E7D32",
+        type: "EXCEL",
+      };
+
+    case "ppt":
+    case "pptx":
+      return {
+        icon: "easel",
+        color: "#F57C00",
+        type: "POWERPOINT",
+      };
+
+    case "zip":
+    case "rar":
+      return {
+        icon: "archive",
+        color: "#795548",
+        type: "ZIP",
+      };
+
+    default:
+      return {
+        icon: "document",
+        color: "#607D8B",
+        type: "ARQUIVO",
+      };
+  }
+}
+
     return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -949,7 +1320,11 @@ async function changePlaybackSpeed() {
 
       <FlatList
         ref={flatListRef}
-        data={messages}
+        data={[...messages, ...pendingMessages].sort((a, b) => {
+          const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : Date.now();
+          const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : Date.now();
+          return aTime - bTime;
+        })}
         onScrollToIndexFailed={(info) => {
         setTimeout(() => {
           flatListRef.current?.scrollToIndex({
@@ -988,6 +1363,7 @@ async function changePlaybackSpeed() {
         }
                 renderItem={({ item }) => {
           const isMine = item.senderId === user?.id;
+          const isSending = (item as any).sending === true;
           const statusIcon =
           item.status === "sent"
             ? "checkmark"
@@ -1005,6 +1381,15 @@ async function changePlaybackSpeed() {
                   : styles.otherMessageRow,
               ]}
             >
+              <SwipeableMessage
+  isMine={isMine}
+  disabled={!!item.deleted || isSending}
+  onReply={() => {
+    if (!item.deleted) {
+      setReplyMessage(item);
+    }
+  }}
+>
               <Pressable  
                   disabled={item.deleted}
                   onLongPress={() => {
@@ -1017,18 +1402,24 @@ async function changePlaybackSpeed() {
                   alignSelf: isMine ? "flex-end" : "flex-start",
                 }}
               >
-                <View
+                <Animated.View
                   style={[
                     styles.messageBubble,
-                    highlightedMessageId === item.id && {
-                      borderWidth: 3,
-                      borderColor: "#25D366",
-                    },
                     isMine
                       ? styles.myMessageBubble
                       : styles.otherMessageBubble,
                     item.type === "image" &&
                       styles.imageMessageBubble,
+                    isSending && { opacity: 0.6 },
+                    highlightedMessageId === item.id && {
+                      backgroundColor: highlightAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [
+                          isMine ? "#1677FF" : "#FFFFFF",
+                          "#FFE58A",
+                        ],
+                      }),
+                    },
                   ]}
                 >
                   {!isMine && (
@@ -1077,6 +1468,28 @@ async function changePlaybackSpeed() {
                             marginBottom: item.replyTo.text ? 6 : 0,
                           }}
                         />
+                      ) : null}
+
+                     {item.replyTo.type === "document" ? (
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: isMine ? "#FFFFFF" : "#555",
+                          }}
+                        >
+                          📄 {item.replyTo.documentName ?? "Documento"}
+                        </Text>
+                      ) : null}
+
+                      {item.replyTo.type === "audio" ? (
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: isMine ? "#FFFFFF" : "#555",
+                          }}
+                        >
+                          🎤 Áudio
+                        </Text>
                       ) : null}
 
                       {item.replyTo.text ? (
@@ -1143,7 +1556,11 @@ async function changePlaybackSpeed() {
         </Text>
 
         {isMine && (
-          <Ionicons name={statusIcon} size={16} color={item.status === "read" ? "#4FC3F7" : "#FFFFFF"} />
+          isSending ? (
+            <Ionicons name="time-outline" size={14} color="#FFFFFF" />
+          ) : (
+            <Ionicons name={statusIcon} size={16} color={item.status === "read" ? "#4FC3F7" : "#FFFFFF"} />
+          )
         )}
       </View>
     </View>
@@ -1194,15 +1611,19 @@ async function changePlaybackSpeed() {
   </Text>
 
   {isMine && (
-    <Ionicons
-      name={statusIcon}
-      size={16}
-      color={
-        item.status === "read"
-          ? "#4FC3F7"
-          : "#FFFFFF"
-      }
-    />
+    isSending ? (
+      <Ionicons name="time-outline" size={14} color="#FFFFFF" />
+    ) : (
+      <Ionicons
+        name={statusIcon}
+        size={16}
+        color={
+          item.status === "read"
+            ? "#4FC3F7"
+            : "#FFFFFF"
+        }
+      />
+    )
   )}
 </View>
                       </Pressable>
@@ -1271,8 +1692,159 @@ item.audioUrl && (
   onChangeSpeed={changePlaybackSpeed}
 />
 ) }
-                    </View>
+
+{!item.deleted &&
+item.type === "document" &&
+item.documentUrl && (() => {
+
+  const info = getDocumentInfo(
+    item.documentName
+  );
+
+  return (
+    <Pressable
+      onPress={async () => {
+        try {
+          await Linking.openURL(
+            item.documentUrl!
+          );
+        } catch {
+          Alert.alert(
+            "Erro",
+            "Não foi possível abrir o documento."
+          );
+        }
+      }}
+      onLongPress={() => handleLongPress(item)}
+      delayLongPress={300}
+      style={{
+        width: 250,
+        borderRadius: 16,
+        overflow: "hidden",
+        backgroundColor: isMine
+          ? "rgba(255,255,255,.12)"
+          : "#F5F7FA",
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 14,
+        }}
+      >
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 12,
+            backgroundColor: info.color,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Ionicons
+            name={info.icon as any}
+            size={28}
+            color="#FFF"
+          />
+        </View>
+
+        <View
+          style={{
+            flex: 1,
+            marginLeft: 12,
+          }}
+        >
+          <Text
+            numberOfLines={1}
+            style={{
+              fontWeight: "700",
+              fontSize: 15,
+              color: isMine
+                ? "#FFF"
+                : "#202020",
+            }}
+          >
+            {item.documentName}
+          </Text>
+
+          <Text
+            style={{
+              marginTop: 3,
+              fontSize: 12,
+              color: isMine
+                ? "#EAEAEA"
+                : "#777",
+            }}
+          >
+            {info.type}
+            {" • "}
+            {item.documentSize
+              ? `${(
+                  item.documentSize /
+                  1024 /
+                  1024
+                ).toFixed(2)} MB`
+              : ""}
+          </Text>
+        </View>
+      </View>
+
+      <View
+        style={{
+          paddingHorizontal: 14,
+          paddingBottom: 10,
+          flexDirection: "row",
+          justifyContent: "flex-end",
+          alignItems: "center",
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 11,
+            color: isMine
+              ? "#EAEAEA"
+              : "#888",
+            marginRight: 4,
+          }}
+        >
+          {item.createdAt?.toDate
+            ? item.createdAt
+                .toDate()
+                .toLocaleTimeString(
+                  "pt-BR",
+                  {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }
+                )
+            : ""}
+        </Text>
+
+        {isMine && (
+          isSending ? (
+            <Ionicons name="time-outline" size={14} color={isMine ? "#FFF" : "#555"} />
+          ) : (
+            <Ionicons
+              name={statusIcon}
+              size={16}
+              color={
+                item.status === "read"
+                  ? "#4FC3F7"
+                  : "#FFF"
+              }
+            />
+          )
+        )}
+      </View>
+    </Pressable>
+  );
+
+})()}
+                  </Animated.View>
               </Pressable>
+              </SwipeableMessage>
             </View>
           );
         }}
@@ -1320,6 +1892,93 @@ item.audioUrl && (
   </View>
 )}
 
+{selectedDocument && (
+  <View
+    style={{
+      marginHorizontal: 12,
+      marginBottom: 10,
+      padding: 12,
+      borderRadius: 16,
+      backgroundColor: "#F5F7FA",
+      flexDirection: "row",
+      alignItems: "center",
+    }}
+  >
+    {(() => {
+  const info = getDocumentInfo(
+    selectedDocument.name
+  );
+
+  return (
+    <View
+      style={{
+        width: 54,
+        height: 54,
+        borderRadius: 14,
+        backgroundColor: info.color,
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Ionicons
+        name={info.icon as any}
+        size={30}
+        color="#FFF"
+      />
+    </View>
+  );
+})()}
+
+    <View
+      style={{
+        flex: 1,
+        marginLeft: 12,
+      }}
+    >
+      <Text
+        numberOfLines={1}
+        style={{
+          fontWeight: "700",
+          fontSize: 15,
+        }}
+      >
+        <Text
+  style={{
+    color: "#666",
+    marginTop: 3,
+    fontSize: 13,
+  }}
+>
+  {getDocumentInfo(selectedDocument.name).type}
+  {" • "}
+  {(selectedDocument.size / 1024 / 1024).toFixed(2)} MB
+</Text>
+      </Text>
+
+      <Text
+        style={{
+          color: "#666",
+          marginTop: 3,
+        }}
+      >
+        {(selectedDocument.size / 1024 / 1024).toFixed(2)} MB
+      </Text>
+    </View>
+
+    <Pressable
+      onPress={() =>
+        setSelectedDocument(null)
+      }
+    >
+      <Ionicons
+        name="close-circle"
+        size={28}
+        color="#FF3B30"
+      />
+    </Pressable>
+  </View>
+)}
+
 {replyMessage && (
   <View
     style={{
@@ -1346,7 +2005,7 @@ item.audioUrl && (
         Respondendo {replyMessage.senderName}
       </Text>
 
-      <Text
+     <Text
         numberOfLines={1}
         style={{
           color: "#555",
@@ -1355,6 +2014,10 @@ item.audioUrl && (
       >
         {replyMessage.type === "image"
           ? "📷 Foto"
+          : replyMessage.type === "document"
+          ? `📄 ${replyMessage.documentName ?? "Documento"}`
+          : replyMessage.type === "audio"
+          ? "🎤 Áudio"
           : replyMessage.text}
       </Text>
     </View>
@@ -1423,36 +2086,65 @@ item.audioUrl && (
         ) : (
           <>
             <Pressable
-              style={[
-                styles.attachButton,
-                isSending &&
-                  styles.disabledButton,
-              ]}
-              onPress={handleSendImage}
-              disabled={isSending}
-            >
-              <Ionicons
-                name="image"
-                size={24}
-                color="#1677FF"
-              />
-            </Pressable>
+  style={[
+    styles.attachButton,
+    isSending && styles.disabledButton,
+  ]}
+  onPress={handleSendImage}
+  disabled={isSending}
+>
+  <Ionicons
+    name="image"
+    size={24}
+    color="#1677FF"
+  />
+</Pressable>
 
-            <Pressable
-              style={[
-                styles.attachButton,
-                isSending &&
-                  styles.disabledButton,
-              ]}
-              onPress={startRecording}
-              disabled={isSending}
-            >
-              <Ionicons
-                name="mic"
-                size={24}
-                color="#1677FF"
-              />
-            </Pressable>
+<Pressable
+  style={[
+    styles.attachButton,
+    isSending && styles.disabledButton,
+  ]}
+  onPress={handleSendDocument}
+  disabled={isSending}
+>
+  <Ionicons
+    name="document"
+    size={24}
+    color="#1677FF"
+  />
+</Pressable>
+
+<Pressable
+  style={[
+    styles.attachButton,
+    isSending &&
+      styles.disabledButton,
+  ]}
+  onPress={handleSendLocation}
+  disabled={isSending}
+>
+  <Ionicons
+    name="location"
+    size={24}
+    color="#1677FF"
+  />
+</Pressable>
+
+<Pressable
+  style={[
+    styles.attachButton,
+    isSending && styles.disabledButton,
+  ]}
+  onPress={startRecording}
+  disabled={isSending}
+>
+  <Ionicons
+    name="mic"
+    size={24}
+    color="#1677FF"
+  />
+</Pressable>
 
             <TextInput
               style={styles.input}
@@ -1484,15 +2176,19 @@ item.audioUrl && (
             <Pressable
               style={[
                 styles.sendButton,
-                ((!text.trim() && !selectedImage) ||
+                ((!text.trim() &&
+                !selectedImage &&
+                !selectedDocument) ||
                   isSending) &&
                   styles.disabledButton,
               ]}
               onPress={handleSendMessage}
               disabled={
-                (!text.trim() && !selectedImage) ||
-                isSending
-              }
+              (!text.trim() &&
+                !selectedImage &&
+                !selectedDocument) ||
+              isSending
+            }
             >
               <Ionicons
                 name="send"
