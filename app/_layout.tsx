@@ -1,4 +1,5 @@
 import { FavoritesProvider } from "@/src/contexts/FavoritesContext";
+import { LocationPickerProvider } from "@/src/contexts/LocationPickerContext";
 import { ServiceProvider } from "@/src/contexts/ServiceContext";
 import { UserProvider, useUser } from "@/src/contexts/UserContext";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -72,14 +73,16 @@ function AppContent() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <UserProvider>
-        <ServiceProvider>
-          <FavoritesProvider>
-            <AppContent />
-          </FavoritesProvider>
-        </ServiceProvider>
-      </UserProvider>
-    </GestureHandlerRootView>
+   <GestureHandlerRootView style={{ flex: 1 }}>
+  <LocationPickerProvider>
+    <UserProvider>
+      <ServiceProvider>
+        <FavoritesProvider>
+          <Stack />
+        </FavoritesProvider>
+      </ServiceProvider>
+    </UserProvider>
+  </LocationPickerProvider>
+</GestureHandlerRootView>
   );
 }

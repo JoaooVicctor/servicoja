@@ -1,4 +1,5 @@
 import { AudioPlayerV2 } from "@/src/components/AudioPlayerV2";
+import { useLocationPicker } from "@/src/contexts/LocationPickerContext";
 import { useUser } from "@/src/contexts/UserContext";
 import { uploadAudio } from "@/src/services/audio";
 import {
@@ -12,7 +13,6 @@ import {
 import { uploadImage } from "@/src/services/cloudinary";
 import { uploadDocument } from "@/src/services/document";
 import { db } from "@/src/services/firebase";
-import { getCurrentLocation } from "@/src/services/location";
 import { ChatMessage } from "@/src/types/Chat";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
@@ -185,6 +185,11 @@ export default function ChatScreen() {
 
   const { user } = useUser();
 
+  const {
+  selectedLocation: pickedLocation,
+  setSelectedLocation: setPickedLocation,
+} = useLocationPicker();
+
 
   const flatListRef =
     useRef<FlatList<ChatMessage>>(null);
@@ -228,6 +233,16 @@ export default function ChatScreen() {
       longitude: number;
       address: string;
     } | null>(null);
+
+    useEffect(() => {
+  if (!pickedLocation) {
+    return;
+  }
+
+  setSelectedLocation(pickedLocation);
+
+  setPickedLocation(null);
+}, [pickedLocation]);
 
   const [previewVisible, setPreviewVisible] =
     useState(false);
@@ -527,7 +542,8 @@ useEffect(() => {
  if (
   !text.trim() &&
   !selectedImage &&
-  !selectedDocument
+  !selectedDocument &&
+  !selectedLocation
 ) {
   return;
 }
@@ -627,6 +643,8 @@ useEffect(() => {
       selectedDocument.mimeType
     );
 
+    
+
   await sendMessage({
     conversationId: id,
     senderId: user.id,
@@ -642,6 +660,26 @@ useEffect(() => {
   setText("");
   setReplyMessage(null);
 }
+
+else if (selectedLocation) {
+  await sendMessage({
+    conversationId: id,
+    senderId: user.id,
+    senderName: user.name,
+
+    type: "location",
+
+    latitude: selectedLocation.latitude,
+    longitude: selectedLocation.longitude,
+    locationAddress: selectedLocation.address,
+
+    replyTo: replyData,
+  });
+
+  setSelectedLocation(null);
+  setReplyMessage(null);
+}
+
     else {
       await sendMessage({
         conversationId: id,
@@ -667,6 +705,8 @@ useEffect(() => {
   setIsSending(false);
 }
 }
+
+
 
   async function handleSendImage() {
   if (isSending) return;
@@ -748,26 +788,7 @@ async function handleSendDocument() {
   }
 }
 
-async function handleSendLocation() {
-  try {
-    const location =
-      await getCurrentLocation();
 
-    setSelectedLocation({
-      latitude: location.latitude,
-      longitude: location.longitude,
-      address: location.address,
-    });
-
-  } catch (error) {
-    Alert.alert(
-      "Localização",
-      error instanceof Error
-        ? error.message
-        : "Não foi possível obter sua localização."
-    );
-  }
-}
 
 function handleLongPress(item: ChatMessage) {
   setSelectedMessage(item);
@@ -1842,6 +1863,150 @@ item.documentUrl && (() => {
   );
 
 })()}
+
+{!item.deleted &&
+item.type === "location" &&
+item.latitude !== undefined &&
+item.longitude !== undefined && (
+
+  <Pressable
+    onPress={() =>
+      Linking.openURL(
+        `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`
+      )
+    }
+    onLongPress={() => handleLongPress(item)}
+    delayLongPress={300}
+    style={{
+      width: 250,
+      borderRadius: 16,
+      overflow: "hidden",
+      backgroundColor: isMine
+        ? "rgba(255,255,255,.12)"
+        : "#F5F7FA",
+    }}
+  >
+    <>
+  <Image
+    source={{
+      uri: `https://staticmap.openstreetmap.de/staticmap.php?center=${item.latitude},${item.longitude}&zoom=16&size=600x300&markers=${item.latitude},${item.longitude},red-pushpin`,
+    }}
+    style={{
+      width: "100%",
+      height: 150,
+      backgroundColor: "#EEE",
+    }}
+    resizeMode="cover"
+  />
+
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 14,
+    }}
+  >
+    <View
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: "#34A853",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Ionicons
+        name="location"
+        size={22}
+        color="#FFF"
+      />
+    </View>
+
+    <View
+      style={{
+        flex: 1,
+        marginLeft: 12,
+      }}
+    >
+      <Text
+        style={{
+          fontWeight: "700",
+          color: isMine
+            ? "#FFF"
+            : "#202020",
+        }}
+      >
+        Localização compartilhada
+      </Text>
+
+      <Text
+        numberOfLines={2}
+        style={{
+          marginTop: 4,
+          color: isMine
+            ? "#EAEAEA"
+            : "#666",
+          fontSize: 13,
+        }}
+      >
+        {item.locationAddress}
+      </Text>
+    </View>
+  </View>
+</>
+
+    <View
+      style={{
+        paddingHorizontal: 14,
+        paddingBottom: 10,
+        flexDirection: "row",
+        justifyContent: "flex-end",
+        alignItems: "center",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 11,
+          color: isMine
+            ? "#EAEAEA"
+            : "#888",
+          marginRight: 4,
+        }}
+      >
+        {item.createdAt?.toDate
+          ? item.createdAt
+              .toDate()
+              .toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+          : ""}
+      </Text>
+
+      {isMine && (
+        isSending ? (
+          <Ionicons
+            name="time-outline"
+            size={14}
+            color="#FFF"
+          />
+        ) : (
+          <Ionicons
+            name={statusIcon}
+            size={16}
+            color={
+              item.status === "read"
+                ? "#4FC3F7"
+                : "#FFF"
+            }
+          />
+        )
+      )}
+    </View>
+  </Pressable>
+)}
+
                   </Animated.View>
               </Pressable>
               </SwipeableMessage>
@@ -1968,6 +2133,76 @@ item.documentUrl && (() => {
     <Pressable
       onPress={() =>
         setSelectedDocument(null)
+      }
+    >
+      <Ionicons
+        name="close-circle"
+        size={28}
+        color="#FF3B30"
+      />
+    </Pressable>
+  </View>
+)}
+
+{selectedLocation && (
+  <View
+    style={{
+      marginHorizontal: 12,
+      marginBottom: 10,
+      padding: 14,
+      borderRadius: 16,
+      backgroundColor: "#F5F7FA",
+      flexDirection: "row",
+      alignItems: "center",
+    }}
+  >
+    <View
+      style={{
+        width: 54,
+        height: 54,
+        borderRadius: 14,
+        backgroundColor: "#34A853",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Ionicons
+        name="location"
+        size={28}
+        color="#FFF"
+      />
+    </View>
+
+    <View
+      style={{
+        flex: 1,
+        marginLeft: 12,
+      }}
+    >
+      <Text
+        numberOfLines={2}
+        style={{
+          fontWeight: "700",
+          fontSize: 15,
+        }}
+      >
+        Compartilhar localização
+      </Text>
+
+      <Text
+        numberOfLines={2}
+        style={{
+          marginTop: 3,
+          color: "#666",
+        }}
+      >
+        {selectedLocation.address}
+      </Text>
+    </View>
+
+    <Pressable
+      onPress={() =>
+        setSelectedLocation(null)
       }
     >
       <Ionicons
@@ -2121,7 +2356,9 @@ item.documentUrl && (() => {
     isSending &&
       styles.disabledButton,
   ]}
-  onPress={handleSendLocation}
+  onPress={() =>
+  router.push("/chat/location-picker")
+}
   disabled={isSending}
 >
   <Ionicons
@@ -2175,18 +2412,20 @@ item.documentUrl && (() => {
 
             <Pressable
               style={[
-                styles.sendButton,
-                ((!text.trim() &&
+              styles.sendButton,
+              ((!text.trim() &&
                 !selectedImage &&
-                !selectedDocument) ||
-                  isSending) &&
-                  styles.disabledButton,
-              ]}
+                !selectedDocument &&
+                !selectedLocation) ||
+                isSending) &&
+                styles.disabledButton,
+            ]}
               onPress={handleSendMessage}
               disabled={
               (!text.trim() &&
                 !selectedImage &&
-                !selectedDocument) ||
+                !selectedDocument &&
+                !selectedLocation) ||
               isSending
             }
             >
