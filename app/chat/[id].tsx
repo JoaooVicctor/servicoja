@@ -19,6 +19,10 @@ import { Audio } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
+import {
+  useVideoPlayer,
+  VideoView,
+} from "expo-video";
 
 import {
   router,
@@ -219,6 +223,17 @@ export default function ChatScreen() {
 
   const [selectedImage, setSelectedImage] =
     useState<string | null>(null);
+
+    const [selectedVideo, setSelectedVideo] =
+    useState<string | null>(null);
+
+    const selectedVideoPlayer =
+    useVideoPlayer(
+      selectedVideo ?? "",
+      (player) => {
+        player.loop = true;
+      }
+    );
 
     const [selectedDocument, setSelectedDocument] =
     useState<{
@@ -728,20 +743,25 @@ else if (selectedLocation) {
     }
 
     const result =
-      await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: false,
-        quality: 0.8,
-      });
+    await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images", "videos"],
+      allowsEditing: false,
+      quality: 0.8,
+    });
 
     if (result.canceled) return;
 
-    const image = result.assets[0];
+    const file = result.assets[0];
 
-    if (!image?.uri) return;
+if (!file?.uri) {
+  return;
+}
 
-    
-    setSelectedImage(image.uri);
+if (file.type === "video") {
+  setSelectedVideo(file.uri);
+} else {
+  setSelectedImage(file.uri);
+}
 
   } catch (error) {
     Alert.alert(
@@ -1404,20 +1424,37 @@ function getDocumentInfo(fileName?: string) {
             >
               <SwipeableMessage
   isMine={isMine}
-  disabled={!!item.deleted || isSending}
+  disabled={
+    !!item.deleted ||
+    !!item.hiddenForMe ||
+    isSending
+  }
   onReply={() => {
-    if (!item.deleted) {
-      setReplyMessage(item);
+    if (
+      item.deleted ||
+      item.hiddenForMe
+    ) {
+      return;
     }
+
+    setReplyMessage(item);
   }}
 >
               <Pressable  
-                  disabled={item.deleted}
+                  disabled={
+  item.deleted ||
+  item.hiddenForMe
+}
                   onLongPress={() => {
-                  if (!item.deleted) {
-                    handleLongPress(item);
-                  }
-                }}
+  if (
+    item.deleted ||
+    item.hiddenForMe
+  ) {
+    return;
+  }
+
+  handleLongPress(item);
+}}
                 style={{
                   maxWidth: "80%",
                   alignSelf: isMine ? "flex-end" : "flex-start",
@@ -2017,6 +2054,7 @@ item.longitude !== undefined && (
 
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
         {selectedImage && (
+          
   <View
     style={{
       paddingHorizontal: 12,
@@ -2053,6 +2091,52 @@ item.longitude !== undefined && (
         name="close"
         size={16}
         color="#fff"
+      />
+    </Pressable>
+  </View>
+)}
+
+{selectedVideo && (
+  <View
+    style={{
+      paddingHorizontal: 12,
+      paddingTop: 10,
+      backgroundColor: "#FFF",
+      borderTopWidth: 1,
+      borderTopColor: "#E5E5E5",
+    }}
+  >
+    <VideoView
+      player={selectedVideoPlayer}
+      style={{
+        width: 180,
+        height: 320,
+        borderRadius: 12,
+      }}
+      nativeControls
+      contentFit="cover"
+    />
+
+    <Pressable
+      onPress={() =>
+        setSelectedVideo(null)
+      }
+      style={{
+        position: "absolute",
+        top: 18,
+        left: 160,
+        backgroundColor: "#000",
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Ionicons
+        name="close"
+        size={16}
+        color="#FFF"
       />
     </Pressable>
   </View>
@@ -2520,12 +2604,16 @@ item.longitude !== undefined && (
           gap: 12,
         }}
         onPress={() => {
-          if (selectedMessage) {
-            setReplyMessage(selectedMessage);
-          }
+  if (
+    selectedMessage &&
+    !selectedMessage.deleted &&
+    !selectedMessage.hiddenForMe
+  ) {
+    setReplyMessage(selectedMessage);
+  }
 
-          setMenuVisible(false);
-        }}
+  setMenuVisible(false);
+}}
       >
         <Ionicons
           name="return-up-back"
