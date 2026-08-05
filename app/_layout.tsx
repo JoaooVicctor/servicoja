@@ -3,6 +3,7 @@ import { LocationPickerProvider } from "@/src/contexts/LocationPickerContext";
 import { ServiceProvider } from "@/src/contexts/ServiceContext";
 import { UserProvider, useUser } from "@/src/contexts/UserContext";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import Toast from "react-native-toast-message";
 
 import {
@@ -74,15 +75,17 @@ function AppContent() {
 export default function RootLayout() {
   return (
    <GestureHandlerRootView style={{ flex: 1 }}>
-  <LocationPickerProvider>
-    <UserProvider>
-      <ServiceProvider>
-        <FavoritesProvider>
-          <Stack />
-        </FavoritesProvider>
-      </ServiceProvider>
-    </UserProvider>
-  </LocationPickerProvider>
+  <KeyboardProvider>
+    <LocationPickerProvider>
+      <UserProvider>
+        <ServiceProvider>
+          <FavoritesProvider>
+            <Stack />
+          </FavoritesProvider>
+        </ServiceProvider>
+      </UserProvider>
+    </LocationPickerProvider>
+  </KeyboardProvider>
 </GestureHandlerRootView>
   );
 }

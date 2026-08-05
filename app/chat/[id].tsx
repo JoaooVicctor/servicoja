@@ -46,7 +46,6 @@ import {
   Animated,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Modal,
   PanResponder,
   Platform,
@@ -56,6 +55,8 @@ import {
   TextInput,
   View
 } from "react-native";
+
+import { KeyboardStickyView } from "react-native-keyboard-controller";
 
 function SwipeableMessage({
   isMine,
@@ -266,6 +267,9 @@ export default function ChatScreen() {
 
     const [menuVisible, setMenuVisible] =
   useState(false);
+
+  const [attachMenuVisible, setAttachMenuVisible] =
+    useState(false);
 
   const [otherUserName, setOtherUserName] =
   useState("Conversa");
@@ -1262,11 +1266,7 @@ function getDocumentInfo(fileName?: string) {
 }
 
     return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-    >
+    <View style={styles.container}>
       <View style={styles.header}>
         <Pressable
           style={styles.backButton}
@@ -2015,6 +2015,7 @@ item.longitude !== undefined && (
         }}
       />
 
+      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
         {selectedImage && (
   <View
     style={{
@@ -2325,60 +2326,12 @@ item.longitude !== undefined && (
     styles.attachButton,
     isSending && styles.disabledButton,
   ]}
-  onPress={handleSendImage}
+  onPress={() => setAttachMenuVisible(true)}
   disabled={isSending}
 >
   <Ionicons
-    name="image"
-    size={24}
-    color="#1677FF"
-  />
-</Pressable>
-
-<Pressable
-  style={[
-    styles.attachButton,
-    isSending && styles.disabledButton,
-  ]}
-  onPress={handleSendDocument}
-  disabled={isSending}
->
-  <Ionicons
-    name="document"
-    size={24}
-    color="#1677FF"
-  />
-</Pressable>
-
-<Pressable
-  style={[
-    styles.attachButton,
-    isSending &&
-      styles.disabledButton,
-  ]}
-  onPress={() =>
-  router.push("/chat/location-picker")
-}
-  disabled={isSending}
->
-  <Ionicons
-    name="location"
-    size={24}
-    color="#1677FF"
-  />
-</Pressable>
-
-<Pressable
-  style={[
-    styles.attachButton,
-    isSending && styles.disabledButton,
-  ]}
-  onPress={startRecording}
-  disabled={isSending}
->
-  <Ionicons
-    name="mic"
-    size={24}
+    name="add-circle"
+    size={30}
     color="#1677FF"
   />
 </Pressable>
@@ -2411,6 +2364,21 @@ item.longitude !== undefined && (
             />
 
             <Pressable
+  style={[
+    styles.attachButton,
+    isSending && styles.disabledButton,
+  ]}
+  onPress={startRecording}
+  disabled={isSending}
+>
+  <Ionicons
+    name="mic"
+    size={24}
+    color="#1677FF"
+  />
+</Pressable>
+
+            <Pressable
               style={[
               styles.sendButton,
               ((!text.trim() &&
@@ -2437,7 +2405,91 @@ item.longitude !== undefined && (
             </Pressable>
           </>
         )}
-      </View>    
+      </View>
+      </KeyboardStickyView>
+
+      <Modal
+        visible={attachMenuVisible}
+        transparent
+        animationType="fade"
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.25)",
+            justifyContent: "flex-end",
+          }}
+          onPress={() => setAttachMenuVisible(false)}
+        >
+          <View
+            style={{
+              backgroundColor: "#FFF",
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingVertical: 10,
+              paddingBottom: Platform.OS === "ios" ? 30 : 10,
+            }}
+          >
+            <Pressable
+              style={styles.attachMenuOption}
+              onPress={() => {
+                setAttachMenuVisible(false);
+                handleSendImage();
+              }}
+            >
+              <View
+                style={[
+                  styles.attachMenuIcon,
+                  { backgroundColor: "#9C27B0" },
+                ]}
+              >
+                <Ionicons name="image" size={22} color="#FFF" />
+              </View>
+
+              <Text style={styles.attachMenuText}>Galeria</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.attachMenuOption}
+              onPress={() => {
+                setAttachMenuVisible(false);
+                handleSendDocument();
+              }}
+            >
+              <View
+                style={[
+                  styles.attachMenuIcon,
+                  { backgroundColor: "#1976D2" },
+                ]}
+              >
+                <Ionicons name="document" size={22} color="#FFF" />
+              </View>
+
+              <Text style={styles.attachMenuText}>Documento</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.attachMenuOption}
+              onPress={() => {
+                setAttachMenuVisible(false);
+                router.push("/chat/location-picker");
+              }}
+            >
+              <View
+                style={[
+                  styles.attachMenuIcon,
+                  { backgroundColor: "#34A853" },
+                ]}
+              >
+                <Ionicons name="location" size={22} color="#FFF" />
+              </View>
+
+              <Text style={styles.attachMenuText}>Localização</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
       <Modal
   visible={menuVisible}
   transparent
@@ -2643,7 +2695,7 @@ item.longitude !== undefined && (
   </Pressable>
 </Modal>
 
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -2816,6 +2868,27 @@ attachButton: {
   borderRadius: 21,
   justifyContent: "center",
   alignItems: "center",
+},
+
+attachMenuOption: {
+  flexDirection: "row",
+  alignItems: "center",
+  padding: 16,
+  gap: 14,
+},
+
+attachMenuIcon: {
+  width: 44,
+  height: 44,
+  borderRadius: 22,
+  justifyContent: "center",
+  alignItems: "center",
+},
+
+attachMenuText: {
+  fontSize: 16,
+  color: "#202020",
+  fontWeight: "600",
 },
 
 input: {
