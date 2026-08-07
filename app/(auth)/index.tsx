@@ -1,7 +1,6 @@
-import { Button } from "@/src/components/Button";
 import { colors } from "@/src/theme/colors";
 import { router } from "expo-router";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, } from "react-native";
 
 export default function Welcome() {
   return (
@@ -22,10 +21,22 @@ export default function Welcome() {
         que resolvem seus problemas.
       </Text>
 
-      <Button
-        title="Começar"
-        onPress={() => router.push("/(auth)/login")}
-      />
+      <Pressable
+  style={styles.startButton}
+  onPress={() => router.push("/(auth)/login")}
+>
+
+  <Text style={styles.startText}>
+    Começar agora
+  </Text>
+
+  <View style={styles.arrowCircle}>
+    <Text style={styles.arrow}>
+      →
+    </Text>
+  </View>
+
+</Pressable>
 
     </View>
   );
@@ -62,4 +73,56 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 40,
   },
+  startButton: {
+  width: "100%",
+  height: 70,
+
+  borderRadius: 35,
+
+  backgroundColor: "#1664FF",
+
+  marginTop: 35,
+
+  flexDirection: "row",
+
+  alignItems: "center",
+
+  justifyContent: "center",
+
+  elevation: 10,
+},
+
+startText: {
+  color: "#FFF",
+
+  fontSize: 28,
+
+  fontWeight: "700",
+},
+
+arrowCircle: {
+  position: "absolute",
+
+  right: 8,
+
+  width: 56,
+
+  height: 56,
+
+  borderRadius: 28,
+
+  backgroundColor: "#FFF",
+
+  justifyContent: "center",
+
+  alignItems: "center",
+},
+
+arrow: {
+  color: "#1664FF",
+
+  fontSize: 34,
+
+  fontWeight: "700",
+},
 });

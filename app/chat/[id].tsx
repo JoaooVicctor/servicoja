@@ -50,7 +50,7 @@ import {
   Animated,
   FlatList,
   Image,
-  Modal,
+  Keyboard,
   PanResponder,
   Platform,
   Pressable,
@@ -76,12 +76,17 @@ function SwipeableMessage({
   const translateX = useRef(new Animated.Value(0)).current;
   const replyIconOpacity = useRef(new Animated.Value(0)).current;
   const hasTriggeredRef = useRef(false);
+  const disabledRef = useRef(disabled);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        if (disabled) return false;
+        if (disabledRef.current) return false;
 
         return (
           gestureState.dx < -10 &&
@@ -196,8 +201,11 @@ export default function ChatScreen() {
 } = useLocationPicker();
 
 
-  const flatListRef =
+ const flatListRef =
     useRef<FlatList<ChatMessage>>(null);
+
+  const previousMessageCountRef = useRef(0);
+  const isNearBottomRef = useRef(true);
 
     const messageRefs = useRef<
     Record<string, View | null>
@@ -342,6 +350,10 @@ const [playbackRate, setPlaybackRate] =
   const [otherUserPhoto, setOtherUserPhoto] =
   useState<string | null>(null);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [stickyBarHeight, setStickyBarHeight] = useState(80);
+
  useEffect(() => {
   if (!id || !user?.id) {
     return;
@@ -458,16 +470,45 @@ useEffect(() => {
 }, [messages, playingId]);
 
   useEffect(() => {
-    if (messages.length === 0) {
-      return;
+    const total = messages.length + pendingMessages.length;
+
+    if (total > previousMessageCountRef.current && isNearBottomRef.current) {
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      });
     }
 
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({
-        animated: true,
-      });
-    }, 100);
-  }, [messages]);
+    previousMessageCountRef.current = total;
+  }, [messages, pendingMessages]);
+
+useEffect(() => {
+  const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+    setKeyboardVisible(true);
+    setKeyboardHeight(e.endCoordinates.height);
+  });
+
+  const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+    setKeyboardVisible(false);
+    setKeyboardHeight(0);
+  });
+
+  return () => {
+    showSub.remove();
+    hideSub.remove();
+  };
+}, []);
+
+useEffect(() => {
+  if (!isNearBottomRef.current) {
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    flatListRef.current?.scrollToEnd({ animated: false });
+  }, 50);
+
+  return () => clearTimeout(timeout);
+}, [keyboardHeight]);
 
   useEffect(() => {
   if (!id || !user?.id) {
@@ -713,6 +754,12 @@ else if (selectedLocation) {
       await setTyping(id, user.id, false);
       setReplyMessage(null);
     }
+
+   isNearBottomRef.current = true;
+
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    });
     } catch (error) {
   console.log("ERRO AO ENVIAR:", error);
 
@@ -815,6 +862,10 @@ async function handleSendDocument() {
 
 
 function handleLongPress(item: ChatMessage) {
+  if (item.deleted || item.hiddenForMe) {
+    return;
+  }
+
   setSelectedMessage(item);
   setMenuVisible(true);
 }
@@ -838,7 +889,7 @@ function scrollToReply(messageId: string) {
     });
   }
 
-  setHighlightedMessageId(messageId);
+ setHighlightedMessageId(messageId);
   highlightAnim.setValue(0);
 
   Animated.sequence([
@@ -854,6 +905,16 @@ function scrollToReply(messageId: string) {
       useNativeDriver: false,
     }),
   ]).start(() => setHighlightedMessageId(null));
+}
+
+function handleScroll(event: any) {
+  const { contentOffset, contentSize, layoutMeasurement } =
+    event.nativeEvent;
+
+  const distanceFromBottom =
+    contentSize.height - (contentOffset.y + layoutMeasurement.height);
+
+  isNearBottomRef.current = distanceFromBottom < 120;
 }
 
 async function startRecording() {
@@ -1359,8 +1420,13 @@ function getDocumentInfo(fileName?: string) {
         </View>
       </View>
 
-      <FlatList
+    <FlatList
         ref={flatListRef}
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         data={[...messages, ...pendingMessages].sort((a, b) => {
           const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : Date.now();
           const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : Date.now();
@@ -1376,14 +1442,17 @@ function getDocumentInfo(fileName?: string) {
         }, 500);
       }}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={
-          styles.messagesContent
-        }
-        onContentSizeChange={() => {
-          flatListRef.current?.scrollToEnd({
-            animated: true,
-          });
-        }}
+       contentContainerStyle={styles.messagesContent}
+      ListFooterComponent={
+  <View
+    style={{
+      height: keyboardVisible
+        ? stickyBarHeight + 270
+        : 8,
+    }}
+  />
+}
+        
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons
@@ -1409,6 +1478,14 @@ function getDocumentInfo(fileName?: string) {
           item.status === "sent"
             ? "checkmark"
             : "checkmark-done";
+
+            const repliedOriginal = item.replyTo
+            ? messages.find((m) => m.id === item.replyTo!.id)
+            : undefined;
+
+          const repliedWasDeleted =
+            !!repliedOriginal &&
+            (repliedOriginal.deleted || repliedOriginal.hiddenForMe);
 
           return (
               <View
@@ -1487,13 +1564,16 @@ function getDocumentInfo(fileName?: string) {
                   )}
 
                   {!item.deleted &&
+                  !item.hiddenForMe &&
                   item.replyTo && (
                     <Pressable
                       onPress={() => {
-                        if (item.replyTo) {
+                        if (item.replyTo && !repliedWasDeleted) {
                           scrollToReply(item.replyTo.id);
                         }
                       }}
+                      onLongPress={() => handleLongPress(item)}
+                      delayLongPress={300}
                       style={{
                         borderLeftWidth: 3,
                         borderLeftColor: "#1677FF",
@@ -1515,51 +1595,64 @@ function getDocumentInfo(fileName?: string) {
                         {item.replyTo.senderName}
                       </Text>
 
-                      {item.replyTo.type === "image" &&
-                      item.replyTo.imageUrl ? (
-                        <Image
-                          source={{ uri: item.replyTo.imageUrl }}
-                          style={{
-                            width: 55,
-                            height: 55,
-                            borderRadius: 8,
-                            marginBottom: item.replyTo.text ? 6 : 0,
-                          }}
-                        />
-                      ) : null}
-
-                     {item.replyTo.type === "document" ? (
+                      {repliedWasDeleted ? (
                         <Text
-                          numberOfLines={1}
                           style={{
-                            color: isMine ? "#FFFFFF" : "#555",
+                            fontStyle: "italic",
+                            color: isMine ? "#EAEAEA" : "#777",
                           }}
                         >
-                          📄 {item.replyTo.documentName ?? "Documento"}
+                          🚫 Mensagem apagada
                         </Text>
-                      ) : null}
+                      ) : (
+                        <>
+                          {item.replyTo.type === "image" &&
+                          item.replyTo.imageUrl ? (
+                            <Image
+                              source={{ uri: item.replyTo.imageUrl }}
+                              style={{
+                                width: 55,
+                                height: 55,
+                                borderRadius: 8,
+                                marginBottom: item.replyTo.text ? 6 : 0,
+                              }}
+                            />
+                          ) : null}
 
-                      {item.replyTo.type === "audio" ? (
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            color: isMine ? "#FFFFFF" : "#555",
-                          }}
-                        >
-                          🎤 Áudio
-                        </Text>
-                      ) : null}
+                         {item.replyTo.type === "document" ? (
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                color: isMine ? "#FFFFFF" : "#555",
+                              }}
+                            >
+                              📄 {item.replyTo.documentName ?? "Documento"}
+                            </Text>
+                          ) : null}
 
-                      {item.replyTo.text ? (
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            color: isMine ? "#FFFFFF" : "#555",
-                          }}
-                        >
-                          {item.replyTo.text}
-                        </Text>
-                      ) : null}
+                          {item.replyTo.type === "audio" ? (
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                color: isMine ? "#FFFFFF" : "#555",
+                              }}
+                            >
+                              🎤 Áudio
+                            </Text>
+                          ) : null}
+
+                          {item.replyTo.text ? (
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                color: isMine ? "#FFFFFF" : "#555",
+                              }}
+                            >
+                              {item.replyTo.text}
+                            </Text>
+                          ) : null}
+                        </>
+                      )}
                     </Pressable>
                   )}
 
@@ -1625,7 +1718,8 @@ function getDocumentInfo(fileName?: string) {
   )
 )}
 
-                  {!item.deleted &&
+                 {!item.deleted &&
+                  !item.hiddenForMe &&
                   item.type === "image" &&
                   item.imageUrl && (
                       <Pressable
@@ -1686,8 +1780,8 @@ function getDocumentInfo(fileName?: string) {
 </View>
                       </Pressable>
                   )}
-
                   {!item.deleted &&
+                  !item.hiddenForMe &&
                   item.type === "image" &&
                   item.text && (
                       <Text
@@ -1701,7 +1795,8 @@ function getDocumentInfo(fileName?: string) {
                       </Text>
                     )}
 
-                 {!item.deleted &&
+                {!item.deleted &&
+!item.hiddenForMe &&
 item.type === "audio" &&
 item.audioUrl && (
   <AudioPlayerV2
@@ -1752,6 +1847,7 @@ item.audioUrl && (
 ) }
 
 {!item.deleted &&
+!item.hiddenForMe &&
 item.type === "document" &&
 item.documentUrl && (() => {
 
@@ -1902,6 +1998,7 @@ item.documentUrl && (() => {
 })()}
 
 {!item.deleted &&
+!item.hiddenForMe &&
 item.type === "location" &&
 item.latitude !== undefined &&
 item.longitude !== undefined && (
@@ -2052,7 +2149,10 @@ item.longitude !== undefined && (
         }}
       />
 
-      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+     <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+        <View
+          onLayout={(e) => setStickyBarHeight(e.nativeEvent.layout.height)}
+        >
         {selectedImage && (
           
   <View
@@ -2490,285 +2590,205 @@ item.longitude !== undefined && (
           </>
         )}
       </View>
+        </View>
       </KeyboardStickyView>
 
-      <Modal
-        visible={attachMenuVisible}
-        transparent
-        animationType="fade"
-      >
+      {attachMenuVisible && (
         <Pressable
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.25)",
-            justifyContent: "flex-end",
-          }}
+          style={styles.sheetOverlay}
           onPress={() => setAttachMenuVisible(false)}
         >
-          <View
-            style={{
-              backgroundColor: "#FFF",
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              paddingVertical: 10,
-              paddingBottom: Platform.OS === "ios" ? 30 : 10,
-            }}
-          >
-            <Pressable
-              style={styles.attachMenuOption}
-              onPress={() => {
-                setAttachMenuVisible(false);
-                handleSendImage();
-              }}
-            >
-              <View
-                style={[
-                  styles.attachMenuIcon,
-                  { backgroundColor: "#9C27B0" },
-                ]}
-              >
-                <Ionicons name="image" size={22} color="#FFF" />
-              </View>
-
-              <Text style={styles.attachMenuText}>Galeria</Text>
-            </Pressable>
-
-            <Pressable
-              style={styles.attachMenuOption}
-              onPress={() => {
-                setAttachMenuVisible(false);
-                handleSendDocument();
-              }}
-            >
-              <View
-                style={[
-                  styles.attachMenuIcon,
-                  { backgroundColor: "#1976D2" },
-                ]}
-              >
-                <Ionicons name="document" size={22} color="#FFF" />
-              </View>
-
-              <Text style={styles.attachMenuText}>Documento</Text>
-            </Pressable>
-
-            <Pressable
-              style={styles.attachMenuOption}
-              onPress={() => {
-                setAttachMenuVisible(false);
-                router.push("/chat/location-picker");
-              }}
-            >
-              <View
-                style={[
-                  styles.attachMenuIcon,
-                  { backgroundColor: "#34A853" },
-                ]}
-              >
-                <Ionicons name="location" size={22} color="#FFF" />
-              </View>
-
-              <Text style={styles.attachMenuText}>Localização</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-
-      <Modal
-  visible={menuVisible}
-  transparent
-  animationType="fade"
->
-  <Pressable
-    style={{
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.25)",
-      justifyContent: "flex-end",
-    }}
-    onPress={() => setMenuVisible(false)}
-  >
-    <View
-      style={{
-        backgroundColor: "#FFF",
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        paddingVertical: 10,
-      }}
-    >
-
-      <Pressable
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          padding: 16,
-          gap: 12,
-        }}
-        onPress={() => {
-  if (
-    selectedMessage &&
-    !selectedMessage.deleted &&
-    !selectedMessage.hiddenForMe
-  ) {
-    setReplyMessage(selectedMessage);
-  }
-
-  setMenuVisible(false);
-}}
-      >
-        <Ionicons
-          name="return-up-back"
-          size={22}
-          color="#1677FF"
-        />
-
-        <Text>Responder</Text>
-      </Pressable>
-
-      {selectedMessage &&
-  (() => {
-    const created =
-      selectedMessage.createdAt
-        ?.toMillis?.() ?? 0;
-
-    const isMyMessage =
-      selectedMessage.senderId ===
-      user?.id;
-
-    const isWithinDeleteLimit =
-      Date.now() - created <=
-      60 * 60 * 1000;
-
-    const canDeleteForEveryone =
-    selectedMessage.senderId === user?.id &&
-    Date.now() -
-    (selectedMessage.createdAt?.toMillis?.() ?? 0) <=
-    60 * 60 * 1000 &&
-    !selectedMessage.deleted;
-
-    return (
-      <>
-        {canDeleteForEveryone && (
           <Pressable
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              padding: 16,
-              gap: 12,
-            }}
-            onPress={async () => {
-              if (
-                !id ||
-                !user?.id ||
-                !selectedMessage
-              ) {
-                return;
-              }
-
-              try {
-                await deleteMessageForEveryone(
-                  id,
-                  selectedMessage.id,
-                  user.id
-                );
-              } catch (error) {
-                Alert.alert(
-                  "Erro",
-                  error instanceof Error
-                    ? error.message
-                    : "Não foi possível apagar a mensagem."
-                );
-              } finally {
-                setMenuVisible(false);
-                setSelectedMessage(null);
-              }
-            }}
+            style={[styles.sheetContainer, { marginBottom: keyboardHeight }]}
+            onPress={() => {}}
           >
-            <Ionicons
-              name="trash"
-              size={22}
-              color="red"
-            />
+            <View style={styles.sheetHandle} />
 
-            <Text
-              style={{
-                color: "red",
+            <View style={styles.attachGrid}>
+              <Pressable
+                style={styles.attachGridItem}
+                onPress={() => {
+                  setAttachMenuVisible(false);
+                  handleSendImage();
+                }}
+              >
+                <View style={[styles.attachGridIcon, { backgroundColor: "#9C27B0" }]}>
+                  <Ionicons name="image" size={26} color="#FFF" />
+                </View>
+                <Text style={styles.attachGridLabel}>Galeria</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.attachGridItem}
+                onPress={() => {
+                  setAttachMenuVisible(false);
+                  handleSendDocument();
+                }}
+              >
+                <View style={[styles.attachGridIcon, { backgroundColor: "#1976D2" }]}>
+                  <Ionicons name="document" size={26} color="#FFF" />
+                </View>
+                <Text style={styles.attachGridLabel}>Documento</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.attachGridItem}
+                onPress={() => {
+                  setAttachMenuVisible(false);
+                  router.push("/chat/location-picker");
+                }}
+              >
+                <View style={[styles.attachGridIcon, { backgroundColor: "#34A853" }]}>
+                  <Ionicons name="location" size={26} color="#FFF" />
+                </View>
+                <Text style={styles.attachGridLabel}>Localização</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={styles.sheetCancelButton}
+              onPress={() => setAttachMenuVisible(false)}
+            >
+              <Text style={styles.sheetCancelText}>Cancelar</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      )}
+
+      {menuVisible && (
+        <Pressable
+          style={styles.sheetOverlay}
+          onPress={() => setMenuVisible(false)}
+        >
+          <Pressable
+            style={[styles.sheetContainer, { marginBottom: keyboardHeight }]}
+            onPress={() => {}}
+          >
+            <View style={styles.sheetHandle} />
+
+            <Pressable
+              style={styles.menuRow}
+              onPress={() => {
+                if (
+                  selectedMessage &&
+                  !selectedMessage.deleted &&
+                  !selectedMessage.hiddenForMe
+                ) {
+                  setReplyMessage(selectedMessage);
+                }
+
+                setSelectedMessage(null);
+                setMenuVisible(false);
               }}
             >
-              Apagar para todos
-            </Text>
+              <View style={[styles.menuRowIcon, { backgroundColor: "#E8F1FF" }]}>
+                <Ionicons name="return-up-back" size={20} color="#1677FF" />
+              </View>
+              <Text style={styles.menuRowText}>Responder</Text>
+            </Pressable>
+
+            {selectedMessage &&
+              (() => {
+                const canDeleteForEveryone =
+                  selectedMessage.senderId === user?.id &&
+                  Date.now() -
+                    (selectedMessage.createdAt?.toMillis?.() ?? 0) <=
+                    60 * 60 * 1000 &&
+                  !selectedMessage.deleted;
+
+                return (
+                  <>
+                    {canDeleteForEveryone && (
+                      <Pressable
+                        style={styles.menuRow}
+                        onPress={async () => {
+                          if (!id || !user?.id || !selectedMessage) return;
+
+                          try {
+                            await deleteMessageForEveryone(
+                              id,
+                              selectedMessage.id,
+                              user.id
+                            );
+                          } catch (error) {
+                            Alert.alert(
+                              "Erro",
+                              error instanceof Error
+                                ? error.message
+                                : "Não foi possível apagar a mensagem."
+                            );
+                          } finally {
+                            setMenuVisible(false);
+                            setSelectedMessage(null);
+                          }
+                        }}
+                      >
+                        <View style={[styles.menuRowIcon, { backgroundColor: "#FDECEC" }]}>
+                          <Ionicons name="trash" size={20} color="#E53935" />
+                        </View>
+                        <Text style={[styles.menuRowText, { color: "#E53935" }]}>
+                          Apagar para todos
+                        </Text>
+                      </Pressable>
+                    )}
+
+                    {!selectedMessage.deleted && (
+                      <Pressable
+                        style={styles.menuRow}
+                        onPress={async () => {
+                          if (!id || !user?.id || !selectedMessage) return;
+
+                          try {
+                            await deleteMessageForMe(
+                              id,
+                              selectedMessage.id,
+                              user.id
+                            );
+                          } catch (error) {
+                            Alert.alert(
+                              "Erro",
+                              error instanceof Error
+                                ? error.message
+                                : "Não foi possível apagar a mensagem."
+                            );
+                          } finally {
+                            setMenuVisible(false);
+                            setSelectedMessage(null);
+                          }
+                        }}
+                      >
+                        <View style={[styles.menuRowIcon, { backgroundColor: "#F0F2F5" }]}>
+                          <Ionicons name="trash-outline" size={20} color="#555" />
+                        </View>
+                        <Text style={styles.menuRowText}>Apagar para mim</Text>
+                      </Pressable>
+                    )}
+                  </>
+                );
+              })()}
+
+            <Pressable
+              style={styles.sheetCancelButton}
+              onPress={() => setMenuVisible(false)}
+            >
+              <Text style={styles.sheetCancelText}>Cancelar</Text>
+            </Pressable>
           </Pressable>
-        )}
+        </Pressable>
+      )}
 
-        {!selectedMessage.deleted && (
+      {previewVisible && (
   <Pressable
     style={{
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 16,
-      gap: 12,
-    }}
-    onPress={async () => {
-      if (
-        !id ||
-        !user?.id ||
-        !selectedMessage
-      ) {
-        return;
-      }
-
-      try {
-        await deleteMessageForMe(
-          id,
-          selectedMessage.id,
-          user.id
-        );
-      } catch (error) {
-        Alert.alert(
-          "Erro",
-          error instanceof Error
-            ? error.message
-            : "Não foi possível apagar a mensagem."
-        );
-      } finally {
-        setMenuVisible(false);
-        setSelectedMessage(null);
-      }
-    }}
-  >
-    <Ionicons
-      name="trash-outline"
-      size={22}
-      color="#555"
-    />
-
-    <Text
-      style={{
-        color: "#333",
-      }}
-    >
-      Apagar para mim
-    </Text>
-  </Pressable>
-)}
-      </>
-    );
-  })()}
-
-    </View>
-  </Pressable>
-</Modal>
-
-  <Modal
-  visible={previewVisible}
-  transparent
-  animationType="fade"
->
-  <Pressable
-    style={{
-      flex: 1,
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
       backgroundColor: "rgba(0,0,0,0.95)",
       justifyContent: "center",
       alignItems: "center",
+      zIndex: 50,
     }}
     onPress={() => setPreviewVisible(false)}
   >
@@ -2781,7 +2801,7 @@ item.longitude !== undefined && (
       resizeMode="contain"
     />
   </Pressable>
-</Modal>
+      )}
 
     </View>
   );
@@ -2829,6 +2849,7 @@ headerSubtitle: {
 
 messagesContent: {
   flexGrow: 1,
+  justifyContent: "flex-end",
   padding: 16,
 },
 
@@ -3041,5 +3062,99 @@ recordingStopButton: {
   backgroundColor: "#FF3B30",
   alignItems: "center",
   justifyContent: "center",
+},
+
+sheetOverlay: {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: "rgba(0,0,0,0.4)",
+  justifyContent: "flex-end",
+  zIndex: 50,
+},
+
+sheetContainer: {
+  backgroundColor: "#FFFFFF",
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+  paddingTop: 10,
+  paddingBottom: Platform.OS === "ios" ? 30 : 16,
+  paddingHorizontal: 16,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: -4 },
+  shadowOpacity: 0.15,
+  shadowRadius: 12,
+  elevation: 12,
+},
+
+sheetHandle: {
+  width: 40,
+  height: 4,
+  borderRadius: 2,
+  backgroundColor: "#DDD",
+  alignSelf: "center",
+  marginBottom: 16,
+},
+
+sheetCancelButton: {
+  backgroundColor: "#F0F2F5",
+  borderRadius: 14,
+  paddingVertical: 14,
+  alignItems: "center",
+  marginTop: 8,
+},
+
+sheetCancelText: {
+  fontSize: 15,
+  fontWeight: "700",
+  color: "#333",
+},
+
+attachGrid: {
+  flexDirection: "row",
+  justifyContent: "space-around",
+  marginBottom: 20,
+},
+
+attachGridItem: {
+  alignItems: "center",
+  gap: 8,
+},
+
+attachGridIcon: {
+  width: 58,
+  height: 58,
+  borderRadius: 29,
+  justifyContent: "center",
+  alignItems: "center",
+},
+
+attachGridLabel: {
+  fontSize: 13,
+  color: "#333",
+  fontWeight: "600",
+},
+
+menuRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  paddingVertical: 12,
+  gap: 14,
+},
+
+menuRowIcon: {
+  width: 38,
+  height: 38,
+  borderRadius: 19,
+  justifyContent: "center",
+  alignItems: "center",
+},
+
+menuRowText: {
+  fontSize: 15,
+  fontWeight: "600",
+  color: "#202020",
 },
 });
