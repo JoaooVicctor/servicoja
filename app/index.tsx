@@ -15,6 +15,9 @@ import {
 import Animated, {
   FadeInDown,
   FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -55,6 +58,14 @@ export default function Index() {
       router.replace("/(tabs)");
     }
   }, [user]);
+
+  const scale = useSharedValue(1);
+
+const animatedButtonStyle = useAnimatedStyle(() => {
+  return {
+    transform: [{ scale: scale.value }],
+  };
+});
 
   return (
     <View style={styles.root}>
@@ -139,11 +150,17 @@ export default function Index() {
           
 
           {/* Botão */}
-         <Animated.View
-            entering={FadeInUp.delay(350).duration(700)}
-            style={styles.footerBlock}
-          >
+        <Animated.View
+          entering={FadeInUp.delay(350).duration(700)}
+          style={[styles.footerBlock, animatedButtonStyle]}
+        >
             <Pressable
+  onPressIn={() => {
+    scale.value = withSpring(0.96);
+  }}
+  onPressOut={() => {
+    scale.value = withSpring(1);
+  }}
   onPress={() => router.push("/(auth)/login")}
 >
 
@@ -309,9 +326,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#E5E7EB",
   },
 
-  footerBlock: {
-  width: "100%",
-  alignItems: "center",
+ footerBlock: {
+  width: "90%",
+  alignItems: "stretch",
   marginTop: 18,
 },
 
