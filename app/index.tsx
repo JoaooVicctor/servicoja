@@ -1,5 +1,6 @@
 import { useUser } from "@/src/contexts/UserContext";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, Stack } from "expo-router";
 import { useEffect } from "react";
 import {
@@ -11,13 +12,20 @@ import {
   Text,
   View,
 } from "react-native";
+import Animated, {
+  FadeInDown,
+  FadeInUp,
+} from "react-native-reanimated";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const workersGroupSource = require("@/assets/images/onboarding/workers-group.png");
 const workersGroupAsset = Image.resolveAssetSource(workersGroupSource);
 
-const WORKERS_GROUP_WIDTH = SCREEN_WIDTH - 10;
+const WORKERS_GROUP_WIDTH = Math.min(
+  SCREEN_WIDTH - 30,
+  420
+);
 const WORKERS_GROUP_HEIGHT =
   WORKERS_GROUP_WIDTH *
   (workersGroupAsset.height / workersGroupAsset.width);
@@ -67,26 +75,31 @@ export default function Index() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           {/* Logo (já contém o nome e o subtítulo) */}
-          <Image
+          <Animated.Image
+            entering={FadeInDown.duration(700)}
             source={require("@/assets/images/logo.png")}
             style={styles.logo}
           />
 
           {/* Imagem única com os 3 profissionais, badges e avaliação */}
           {/* Imagem única com os 3 profissionais, badges e avaliação */}
-          <Image
+         <Animated.Image
+            entering={FadeInUp.duration(900)}
             source={workersGroupSource}
             style={{
               width: WORKERS_GROUP_WIDTH,
               height: WORKERS_GROUP_HEIGHT,
               resizeMode: "contain",
-              marginTop: 8,
+              marginTop: -20,
               alignSelf: "center",
             }}
           />
 
           {/* Benefícios */}
-          <View style={styles.benefits}>
+          <Animated.View
+              entering={FadeInUp.delay(200).duration(700)}
+              style={styles.benefits}
+            >
             <View style={styles.benefitItem}>
               <View style={styles.benefitIconWrap}>
                 <Ionicons name="shield-checkmark" size={20} color="#1D4ED8" />
@@ -122,20 +135,40 @@ export default function Index() {
 
               <Text style={styles.benefitText}>Avaliações{"\n"}reais</Text>
             </View>
-          </View>
+         </Animated.View>
+          
 
           {/* Botão */}
-          <View style={styles.footerBlock}>
+         <Animated.View
+            entering={FadeInUp.delay(350).duration(700)}
+            style={styles.footerBlock}
+          >
             <Pressable
-              style={styles.ctaButton}
-              onPress={() => router.push("/(auth)/login")}
-            >
-              <Text style={styles.ctaButtonText}>Começar agora</Text>
+  onPress={() => router.push("/(auth)/login")}
+>
 
-              <View style={styles.ctaButtonIcon}>
-                <Ionicons name="arrow-forward" size={18} color="#1D4ED8" />
-              </View>
-            </Pressable>
+  <LinearGradient
+    colors={["#2563EB", "#1D4ED8", "#1E40AF"]}
+    start={{ x: 0, y: 0 }}
+    end={{ x: 1, y: 0 }}
+    style={styles.ctaButton}
+  >
+
+    <Text style={styles.ctaButtonText}>
+      Começar agora
+    </Text>
+
+    <View style={styles.ctaButtonIcon}>
+      <Ionicons
+        name="arrow-forward"
+        size={18}
+        color="#1D4ED8"
+      />
+    </View>
+    </LinearGradient>
+    
+</Pressable>
+
 
             <View style={styles.footerNote}>
               <Ionicons name="shield-checkmark" size={13} color="#1D4ED8" />
@@ -147,7 +180,8 @@ export default function Index() {
                 </Text>
               </Text>
             </View>
-          </View>
+            </Animated.View>
+  
         </View>
       </SafeAreaView>
     </View>
@@ -224,27 +258,27 @@ const styles = StyleSheet.create({
   top: -30,
 },
 
-  benefits: {
-    width: "100%",
-    height: 96,
-    marginTop: 22,
-    borderRadius: 22,
-    backgroundColor: "#FFF",
+ benefits: {
+  width: "100%",
+  height: 100,
+  marginTop: 18,
+  borderRadius: 24,
+  backgroundColor: "#FFF",
 
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
+  flexDirection: "row",
+  justifyContent: "space-around",
+  alignItems: "center",
 
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-
-    elevation: 8,
+  shadowColor: "#000",
+  shadowOpacity: 0.12,
+  shadowRadius: 20,
+  shadowOffset: {
+    width: 0,
+    height: 8,
   },
+
+  elevation: 12,
+},
 
   benefitItem: {
     flex: 1,
@@ -276,28 +310,29 @@ const styles = StyleSheet.create({
   },
 
   footerBlock: {
-    width: "100%",
-    alignItems: "center",
-    marginTop: 22,
+  width: "100%",
+  alignItems: "center",
+  marginTop: 18,
+},
+
+ ctaButton: {
+  width: "100%",
+  height: 60,
+  borderRadius: 30,
+
+  justifyContent: "center",
+  alignItems: "center",
+
+  shadowColor: "#2563EB",
+  shadowOpacity: 0.45,
+  shadowRadius: 18,
+  shadowOffset: {
+    width: 0,
+    height: 10,
   },
 
-  ctaButton: {
-    width: "100%",
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: "#1D4ED8",
-
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-
-    shadowColor: "#1D4ED8",
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
-  },
+  elevation: 14,
+},
 
   ctaButtonText: {
     fontSize: 16,
@@ -309,9 +344,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 6,
     top: 6,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+     width: 46,
+  height: 46,
+  borderRadius: 23,
     backgroundColor: "#FFF",
     justifyContent: "center",
     alignItems: "center",
