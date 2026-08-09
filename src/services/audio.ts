@@ -1,10 +1,12 @@
 import { Platform } from "react-native";
+import { uploadFormDataWithProgress } from "./uploadWithProgress";
 
 const CLOUD_NAME = "qdmcxuce";
 const UPLOAD_PRESET = "servicoja";
 
 export async function uploadAudio(
-  audioUri: string
+  audioUri: string,
+  onProgress?: (percent: number) => void
 ): Promise<string> {
   const formData = new FormData();
 
@@ -32,27 +34,16 @@ export async function uploadAudio(
     );
   }
 
-  formData.append(
+ formData.append(
     "upload_preset",
     UPLOAD_PRESET
   );
 
-  const response = await fetch(
+  const result = await uploadFormDataWithProgress(
     `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
-    {
-      method: "POST",
-      body: formData,
-    }
+    formData,
+    onProgress
   );
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      result?.error?.message ??
-        "Erro ao enviar áudio."
-    );
-  }
 
   return result.secure_url;
 }

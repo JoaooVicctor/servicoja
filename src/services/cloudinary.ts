@@ -3,8 +3,11 @@ import { Platform } from "react-native";
 const CLOUD_NAME = "qdmcxuce";
 const UPLOAD_PRESET = "servicoja";
 
+import { uploadFormDataWithProgress } from "./uploadWithProgress";
+
 export async function uploadImage(
-  imageUri: string
+  imageUri: string,
+  onProgress?: (percent: number) => void
 ): Promise<string> {
   console.log(
     "Cloudinary: iniciando upload",
@@ -65,43 +68,22 @@ export async function uploadImage(
     );
   }
 
-  formData.append(
+ formData.append(
     "upload_preset",
     UPLOAD_PRESET
   );
 
-  const response = await fetch(
+  const result = await uploadFormDataWithProgress(
     `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    {
-      method: "POST",
-      body: formData,
-    }
+    formData,
+    onProgress
   );
-
-  const result = await response.json();
-
-  console.log(
-    "Cloudinary: resposta",
-    result
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      result?.error?.message ??
-        "Erro ao enviar imagem para o Cloudinary."
-    );
-  }
 
   if (!result.secure_url) {
     throw new Error(
       "O Cloudinary não retornou a URL da imagem."
     );
   }
-
-  console.log(
-    "Cloudinary: upload concluído",
-    result.secure_url
-  );
 
   return result.secure_url;
 }

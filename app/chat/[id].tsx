@@ -13,8 +13,10 @@ import {
 import { uploadImage } from "@/src/services/cloudinary";
 import { uploadDocument } from "@/src/services/document";
 import { db } from "@/src/services/firebase";
+import { uploadVideo } from "@/src/services/video";
 import { ChatMessage } from "@/src/types/Chat";
 import { Ionicons } from "@expo/vector-icons";
+import { useEvent } from "expo";
 import { Audio } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -61,6 +63,100 @@ import {
 } from "react-native";
 
 import { KeyboardStickyView } from "react-native-keyboard-controller";
+
+function ChatVideoMessage({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+  });
+
+  const { isPlaying } = useEvent(player, "playingChange", {
+    isPlaying: player.playing,
+  });
+
+  return (
+    <View
+      style={{
+        width: 220,
+        height: 260,
+        borderRadius: 12,
+        overflow: "hidden",
+        backgroundColor: "#000",
+      }}
+    >
+      <VideoView
+        player={player}
+        style={{ width: "100%", height: "100%" }}
+        contentFit="cover"
+        nativeControls={false}
+      />
+
+      <Pressable
+        onPress={() => {
+          if (isPlaying) {
+            player.pause();
+          } else {
+            player.play();
+          }
+        }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        {!isPlaying && (
+          <View
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="play" size={28} color="#FFF" />
+          </View>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function UploadProgressBar({
+  progress,
+  isMine,
+}: {
+  progress: number;
+  isMine: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.uploadProgressBarTrack,
+        {
+          backgroundColor: isMine
+            ? "rgba(255,255,255,0.35)"
+            : "#E0E0E0",
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.uploadProgressBarFill,
+          {
+            width: `${Math.min(100, Math.max(0, progress))}%`,
+            backgroundColor: isMine ? "#FFFFFF" : "#1677FF",
+          },
+        ]}
+      />
+    </View>
+  );
+}
 
 function SwipeableMessage({
   isMine,
@@ -599,9 +695,10 @@ useEffect(() => {
     return;
   }
 
- if (
+if (
   !text.trim() &&
   !selectedImage &&
+  !selectedVideo &&
   !selectedDocument &&
   !selectedLocation
 ) {
@@ -624,6 +721,10 @@ useEffect(() => {
 
       ...(replyMessage.imageUrl && {
         imageUrl: replyMessage.imageUrl,
+      }),
+
+      ...(replyMessage.videoUrl && {
+        videoUrl: replyMessage.videoUrl,
       }),
 
       ...(replyMessage.audioUrl && {
@@ -658,7 +759,7 @@ useEffect(() => {
       const captionText = text.trim();
       const tempId = `pending-${Date.now()}`;
 
-      setPendingMessages((prev) => [
+     setPendingMessages((prev) => [
         ...prev,
         {
           id: tempId,
@@ -670,6 +771,7 @@ useEffect(() => {
           createdAt: { toDate: () => new Date() },
           status: "sent",
           sending: true,
+          progress: 0,
         },
       ]);
 
@@ -678,7 +780,9 @@ useEffect(() => {
       setReplyMessage(null);
 
       try {
-        const imageUrl = await uploadImage(localUri);
+        const imageUrl = await uploadImage(localUri, (percent) =>
+          updateMessageProgress(tempId, percent)
+        );
 
         await sendMessage({
           conversationId: id,
@@ -689,36 +793,104 @@ useEffect(() => {
           text: captionText,
           replyTo: replyData,
         });
+    } finally {
+        setPendingMessages((prev) =>
+          prev.filter((message) => message.id !== tempId)
+        );
+      }
+    }
+    else if (selectedVideo) {
+      const localUri = selectedVideo;
+      const captionText = text.trim();
+      const tempId = `pending-${Date.now()}`;
+
+     setPendingMessages((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          senderId: user.id,
+          senderName: user.name,
+          type: "video",
+          videoUrl: localUri,
+          text: captionText,
+          createdAt: { toDate: () => new Date() },
+          status: "sent",
+          sending: true,
+          progress: 0,
+        },
+      ]);
+
+      setSelectedVideo(null);
+      setText("");
+      setReplyMessage(null);
+
+      try {
+        const videoUrl = await uploadVideo(localUri, (percent) =>
+          updateMessageProgress(tempId, percent)
+        );
+
+        await sendMessage({
+          conversationId: id,
+          senderId: user.id,
+          senderName: user.name,
+          type: "video",
+          videoUrl,
+          text: captionText,
+          replyTo: replyData,
+        });
       } finally {
         setPendingMessages((prev) =>
           prev.filter((message) => message.id !== tempId)
         );
       }
     }
-    else if (selectedDocument) {
-  const documentUrl =
-    await uploadDocument(
-      selectedDocument.uri,
-      selectedDocument.name,
-      selectedDocument.mimeType
-    );
+  else if (selectedDocument) {
+  const docToSend = selectedDocument;
+  const tempId = `pending-${Date.now()}`;
 
-    
-
-  await sendMessage({
-    conversationId: id,
-    senderId: user.id,
-    senderName: user.name,
-    type: "document",
-    documentUrl,
-    documentName: selectedDocument.name,
-    documentSize: selectedDocument.size,
-    replyTo: replyData,
-  });
+  setPendingMessages((prev) => [
+    ...prev,
+    {
+      id: tempId,
+      senderId: user.id,
+      senderName: user.name,
+      type: "document",
+      documentName: docToSend.name,
+      documentSize: docToSend.size,
+      createdAt: { toDate: () => new Date() },
+      status: "sent",
+      sending: true,
+      progress: 0,
+    },
+  ]);
 
   setSelectedDocument(null);
   setText("");
   setReplyMessage(null);
+
+  try {
+    const documentUrl = await uploadDocument(
+      docToSend.uri,
+      docToSend.name,
+      docToSend.mimeType,
+      (percent) => updateMessageProgress(tempId, percent)
+    );
+
+    await sendMessage({
+      conversationId: id,
+      senderId: user.id,
+      senderName: user.name,
+      type: "document",
+      documentUrl,
+      documentName: docToSend.name,
+      documentSize: docToSend.size,
+      replyTo: replyData,
+    });
+  } finally {
+    setPendingMessages((prev) =>
+      prev.filter((message) => message.id !== tempId)
+    );
+  }
 }
 
 else if (selectedLocation) {
@@ -859,7 +1031,15 @@ async function handleSendDocument() {
   }
 }
 
-
+function updateMessageProgress(tempId: string, percent: number) {
+  setPendingMessages((prev) =>
+    prev.map((message) =>
+      message.id === tempId
+        ? { ...message, progress: percent }
+        : message
+    )
+  );
+}
 
 function handleLongPress(item: ChatMessage) {
   if (item.deleted || item.hiddenForMe) {
@@ -1607,19 +1787,30 @@ function getDocumentInfo(fileName?: string) {
                       ) : (
                         <>
                           {item.replyTo.type === "image" &&
-                          item.replyTo.imageUrl ? (
-                            <Image
-                              source={{ uri: item.replyTo.imageUrl }}
-                              style={{
-                                width: 55,
-                                height: 55,
-                                borderRadius: 8,
-                                marginBottom: item.replyTo.text ? 6 : 0,
-                              }}
-                            />
-                          ) : null}
+                      item.replyTo.imageUrl ? (
+                        <Image
+                          source={{ uri: item.replyTo.imageUrl }}
+                          style={{
+                            width: 55,
+                            height: 55,
+                            borderRadius: 8,
+                            marginBottom: item.replyTo.text ? 6 : 0,
+                          }}
+                        />
+                      ) : null}
 
-                         {item.replyTo.type === "document" ? (
+                      {item.replyTo.type === "video" ? (
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: isMine ? "#FFFFFF" : "#555",
+                          }}
+                        >
+                          🎥 Vídeo
+                        </Text>
+                      ) : null}
+
+                     {item.replyTo.type === "document" ? (
                             <Text
                               numberOfLines={1}
                               style={{
@@ -1762,7 +1953,7 @@ function getDocumentInfo(fileName?: string) {
       : ""}
   </Text>
 
-  {isMine && (
+{isMine && (
     isSending ? (
       <Ionicons name="time-outline" size={14} color="#FFFFFF" />
     ) : (
@@ -1778,9 +1969,17 @@ function getDocumentInfo(fileName?: string) {
     )
   )}
 </View>
+
+                        {isSending &&
+                          typeof (item as any).progress === "number" && (
+                            <UploadProgressBar
+                              progress={(item as any).progress}
+                              isMine={isMine}
+                            />
+                          )}
                       </Pressable>
                   )}
-                  {!item.deleted &&
+                 {!item.deleted &&
                   !item.hiddenForMe &&
                   item.type === "image" &&
                   item.text && (
@@ -1796,6 +1995,82 @@ function getDocumentInfo(fileName?: string) {
                     )}
 
                 {!item.deleted &&
+                !item.hiddenForMe &&
+                item.type === "video" &&
+                item.videoUrl && (
+                  <Pressable
+                    onLongPress={() => handleLongPress(item)}
+                    delayLongPress={300}
+                  >
+                    <ChatVideoMessage uri={item.videoUrl} />
+
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        marginTop: 6,
+                        paddingHorizontal: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: isMine ? "#EAEAEA" : "#888",
+                          marginRight: 4,
+                        }}
+                      >
+                        {item.createdAt?.toDate
+                          ? item.createdAt
+                              .toDate()
+                              .toLocaleTimeString("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                          : ""}
+                      </Text>
+
+                      {isMine && (
+                        isSending ? (
+                          <Ionicons name="time-outline" size={14} color="#FFFFFF" />
+                        ) : (
+                          <Ionicons
+                            name={statusIcon}
+                            size={16}
+                            color={
+                              item.status === "read"
+                                ? "#4FC3F7"
+                                : "#FFFFFF"
+                            }
+                          />
+                        )
+                      )}
+                    </View>
+
+                    {isSending &&
+                      typeof (item as any).progress === "number" && (
+                        <UploadProgressBar
+                          progress={(item as any).progress}
+                          isMine={isMine}
+                        />
+                      )}
+
+                    {item.text && (
+                      <Text
+                        style={[
+                          styles.imageCaption,
+                          isMine && styles.myMessageText,
+                        ]}
+                      >
+                        {item.text}
+                      </Text>
+                    )}
+                  </Pressable>
+                )}
+
+                {!item.deleted &&
+!item.hiddenForMe &&
+item.type === "audio" &&
 !item.hiddenForMe &&
 item.type === "audio" &&
 item.audioUrl && (
@@ -1992,6 +2267,16 @@ item.documentUrl && (() => {
           )
         )}
       </View>
+
+      {isSending &&
+        typeof (item as any).progress === "number" && (
+          <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+            <UploadProgressBar
+              progress={(item as any).progress}
+              isMine={isMine}
+            />
+          </View>
+        )}
     </Pressable>
   );
 
@@ -2434,6 +2719,8 @@ item.longitude !== undefined && (
       >
         {replyMessage.type === "image"
           ? "📷 Foto"
+          : replyMessage.type === "video"
+          ? "🎥 Vídeo"
           : replyMessage.type === "document"
           ? `📄 ${replyMessage.documentName ?? "Documento"}`
           : replyMessage.type === "audio"
@@ -2567,6 +2854,7 @@ item.longitude !== undefined && (
               styles.sendButton,
               ((!text.trim() &&
                 !selectedImage &&
+                !selectedVideo &&
                 !selectedDocument &&
                 !selectedLocation) ||
                 isSending) &&
@@ -2576,6 +2864,7 @@ item.longitude !== undefined && (
               disabled={
               (!text.trim() &&
                 !selectedImage &&
+                !selectedVideo &&
                 !selectedDocument &&
                 !selectedLocation) ||
               isSending
@@ -3156,5 +3445,16 @@ menuRowText: {
   fontSize: 15,
   fontWeight: "600",
   color: "#202020",
+},
+
+uploadProgressBarTrack: {
+  height: 4,
+  borderRadius: 2,
+  overflow: "hidden",
+  marginTop: 6,
+},
+
+uploadProgressBarFill: {
+  height: "100%",
 },
 });

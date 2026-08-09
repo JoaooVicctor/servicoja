@@ -49,6 +49,8 @@ export interface SendMessageData {
 
   imageUrl?: string;
 
+  videoUrl?: string;
+
   audioUrl?: string;
   duration?: number;
 
@@ -234,6 +236,7 @@ export async function sendMessage(
   type,
   text,
   imageUrl,
+  videoUrl,
   audioUrl,
   duration,
 
@@ -272,9 +275,15 @@ export async function sendMessage(
     );
   }
 
-  if (type === "image" && !imageUrl) {
+ if (type === "image" && !imageUrl) {
     throw new Error(
       "A imagem não foi enviada."
+    );
+  }
+
+  if (type === "video" && !videoUrl) {
+    throw new Error(
+      "O vídeo não foi enviado."
     );
   }
 
@@ -367,8 +376,16 @@ if (replyTo) {
     newMessage.text = text?.trim();
   }
 
-  if (type === "image") {
+ if (type === "image") {
     newMessage.imageUrl = imageUrl;
+
+    if (text?.trim()) {
+      newMessage.text = text.trim();
+    }
+  }
+
+  if (type === "video") {
+    newMessage.videoUrl = videoUrl;
 
     if (text?.trim()) {
       newMessage.text = text.trim();
@@ -411,6 +428,10 @@ if (type === "location") {
 
   if (type === "image") {
     lastMessage = "📷 Foto";
+  }
+
+  if (type === "video") {
+    lastMessage = "🎥 Vídeo";
   }
 
   if (type === "audio") {
@@ -502,6 +523,7 @@ export async function deleteMessageForEveryone(
 
     text: "",
     imageUrl: "",
+    videoUrl: "",
     audioUrl: "",
     documentUrl: "",
 documentName: "",
