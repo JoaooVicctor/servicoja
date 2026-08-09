@@ -56,6 +56,7 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -335,8 +336,8 @@ export default function ChatScreen() {
   const [isSending, setIsSending] =
     useState(false);
 
-  const [selectedImage, setSelectedImage] =
-    useState<string | null>(null);
+  const [selectedImages, setSelectedImages] =
+    useState<string[]>([]);
 
     const [selectedVideo, setSelectedVideo] =
     useState<string | null>(null);
@@ -700,7 +701,7 @@ useEffect(() => {
 
 if (
   !text.trim() &&
-  !selectedImage &&
+  selectedImages.length === 0 &&
   !selectedVideo &&
   !selectedDocument &&
   !selectedLocation
@@ -756,27 +757,27 @@ if (
     }
   : undefined;
 
-  let pendingMsg: any;
+  let pendingList: any[] = [];
 
-  if (selectedImage) {
-    pendingMsg = {
-      id: `pending-${Date.now()}`,
+  if (selectedImages.length > 0) {
+    pendingList = selectedImages.map((uri, index) => ({
+      id: `pending-${Date.now()}-${index}`,
       senderId: user.id,
       senderName: user.name,
       type: "image",
-      imageUrl: selectedImage,
-      text: text.trim(),
+      imageUrl: uri,
+      text: index === selectedImages.length - 1 ? text.trim() : "",
       createdAt: { toDate: () => new Date() },
       status: "sent",
       sending: true,
       failed: false,
       progress: 0,
       replyTo: replyData,
-    };
+    }));
 
-    setSelectedImage(null);
+    setSelectedImages([]);
   } else if (selectedVideo) {
-    pendingMsg = {
+    pendingList = [{
       id: `pending-${Date.now()}`,
       senderId: user.id,
       senderName: user.name,
@@ -789,11 +790,11 @@ if (
       failed: false,
       progress: 0,
       replyTo: replyData,
-    };
+    }];
 
     setSelectedVideo(null);
   } else if (selectedDocument) {
-    pendingMsg = {
+    pendingList = [{
       id: `pending-${Date.now()}`,
       senderId: user.id,
       senderName: user.name,
@@ -808,11 +809,11 @@ if (
       failed: false,
       progress: 0,
       replyTo: replyData,
-    };
+    }];
 
     setSelectedDocument(null);
   } else if (selectedLocation) {
-    pendingMsg = {
+    pendingList = [{
       id: `pending-${Date.now()}`,
       senderId: user.id,
       senderName: user.name,
@@ -825,11 +826,11 @@ if (
       sending: true,
       failed: false,
       replyTo: replyData,
-    };
+    }];
 
     setSelectedLocation(null);
   } else {
-    pendingMsg = {
+    pendingList = [{
       id: `pending-${Date.now()}`,
       senderId: user.id,
       senderName: user.name,
@@ -840,12 +841,12 @@ if (
       sending: true,
       failed: false,
       replyTo: replyData,
-    };
+    }];
 
     setTyping(id, user.id, false);
   }
 
-  setPendingMessages((prev) => [...prev, pendingMsg]);
+  setPendingMessages((prev) => [...prev, ...pendingList]);
   setText("");
   setReplyMessage(null);
 
@@ -855,14 +856,13 @@ if (
     flatListRef.current?.scrollToEnd({ animated: true });
   });
 
-  await attemptSend(pendingMsg);
+  await Promise.all(pendingList.map((pendingMsg) => attemptSend(pendingMsg)));
 
   setIsSending(false);
 }
 
 
-
-  async function handleSendImage() {
+ async function handleSendImage() {
   if (isSending) return;
 
   try {
@@ -881,22 +881,32 @@ if (
     await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images", "videos"],
       allowsEditing: false,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
       quality: 0.8,
     });
 
     if (result.canceled) return;
 
-    const file = result.assets[0];
+    const files = result.assets.filter((asset) => asset.uri);
 
-if (!file?.uri) {
-  return;
-}
+    if (files.length === 0) {
+      return;
+    }
 
-if (file.type === "video") {
-  setSelectedVideo(file.uri);
-} else {
-  setSelectedImage(file.uri);
-}
+    const videos = files.filter((file) => file.type === "video");
+    const images = files.filter((file) => file.type !== "video");
+
+    if (videos.length > 0) {
+      setSelectedVideo(videos[0].uri);
+    }
+
+    if (images.length > 0) {
+      setSelectedImages((prev) => [
+        ...prev,
+        ...images.map((file) => file.uri),
+      ]);
+    }
 
   } catch (error) {
     Alert.alert(
@@ -2523,8 +2533,7 @@ item.longitude !== undefined && (
         <View
           onLayout={(e) => setStickyBarHeight(e.nativeEvent.layout.height)}
         >
-        {selectedImage && (
-          
+       {selectedImages.length > 0 && (
   <View
     style={{
       paddingHorizontal: 12,
@@ -2534,35 +2543,41 @@ item.longitude !== undefined && (
       borderTopColor: "#E5E5E5",
     }}
   >
-    <Image
-      source={{ uri: selectedImage }}
-      style={{
-        width: 120,
-        height: 120,
-        borderRadius: 12,
-      }}
-    />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      {selectedImages.map((uri, index) => (
+        <View key={uri + index} style={{ marginRight: 10, marginTop: 6 }}>
+          <Image
+            source={{ uri }}
+            style={{
+              width: 100,
+              height: 100,
+              borderRadius: 12,
+            }}
+          />
 
-    <Pressable
-      onPress={() => setSelectedImage(null)}
-      style={{
-        position: "absolute",
-        top: 18,
-        left: 100,
-        backgroundColor: "#000",
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      <Ionicons
-        name="close"
-        size={16}
-        color="#fff"
-      />
-    </Pressable>
+          <Pressable
+            onPress={() =>
+              setSelectedImages((prev) =>
+                prev.filter((_, i) => i !== index)
+              )
+            }
+            style={{
+              position: "absolute",
+              top: -6,
+              right: -6,
+              backgroundColor: "#000",
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="close" size={14} color="#fff" />
+          </Pressable>
+        </View>
+      ))}
+    </ScrollView>
   </View>
 )}
 
@@ -2938,7 +2953,7 @@ item.longitude !== undefined && (
               style={[
               styles.sendButton,
               ((!text.trim() &&
-                !selectedImage &&
+                selectedImages.length === 0 &&
                 !selectedVideo &&
                 !selectedDocument &&
                 !selectedLocation) ||
@@ -2948,7 +2963,7 @@ item.longitude !== undefined && (
               onPress={handleSendMessage}
               disabled={
               (!text.trim() &&
-                !selectedImage &&
+                selectedImages.length === 0 &&
                 !selectedVideo &&
                 !selectedDocument &&
                 !selectedLocation) ||
@@ -3563,3 +3578,4 @@ failedBannerRetry: {
   marginLeft: 4,
 },
 });
+
