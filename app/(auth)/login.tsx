@@ -3,8 +3,11 @@ import { Input } from "@/src/components/Input";
 import { useUser } from "@/src/contexts/UserContext";
 import { auth, db } from "@/src/services/firebase";
 import { colors } from "@/src/theme/colors";
-import { AntDesign } from "@expo/vector-icons";
-import { router } from "expo-router";
+import {
+  AntDesign,
+  Ionicons,
+} from "@expo/vector-icons";
+import { router, Stack } from "expo-router";
 import { useState } from "react";
 
 import {
@@ -17,65 +20,104 @@ import {
 } from "firebase/firestore";
 
 import {
-  Alert, Image, StyleSheet,
+  Alert,
+  Image,
+  SafeAreaView,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 export default function Login() {
-
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+
   const { setUser } = useUser();
 
- async function handleLogin() {
-  try {
-    const credential =
-      await signInWithEmailAndPassword(
-        auth,
-        email.trim(),
-        senha
+  async function handleLogin() {
+    try {
+      const credential =
+        await signInWithEmailAndPassword(
+          auth,
+          email.trim(),
+          senha
+        );
+
+      const userDoc = await getDoc(
+        doc(db, "users", credential.user.uid)
       );
 
-    const userDoc = await getDoc(
-      doc(db, "users", credential.user.uid)
-    );
+      if (!userDoc.exists()) {
+        Alert.alert(
+          "Erro",
+          "Usuário não encontrado."
+        );
 
-    if (!userDoc.exists()) {
+        return;
+      }
+
+      const user = {
+        id: credential.user.uid,
+        ...(userDoc.data() as any),
+      };
+
+      await setUser(user);
+
+      router.replace("/(tabs)");
+    } catch (error: any) {
       Alert.alert(
         "Erro",
-        "Usuário não encontrado."
+        error.message
       );
-
-      return;
     }
-
-    const user = {
-      id: credential.user.uid,
-      ...(userDoc.data() as any),
-    };
-
-    await setUser(user);
-
-    router.replace("/(tabs)");
-  } catch (error: any) {
-    Alert.alert(
-      "Erro",
-      error.message
-    );
   }
-}
 
   return (
-    <View style={styles.container}>
+  <>
+    <Stack.Screen
+      options={{
+        headerShown: false,
+      }}
+    />
+
+    <SafeAreaView style={styles.container}>
+
+      <View style={styles.topCircle} />
+<View style={styles.bottomCircle} />
+      
+
+      <View style={styles.header}>
+
+        <TouchableOpacity
+          onPress={() => router.back()}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={28}
+             color="#2563EB"
+          />
+        </TouchableOpacity>
+
+        <View style={styles.headerText}>
+
+          <Text style={styles.title}>
+            Entrar
+          </Text>
+
+          <Text style={styles.description}>
+            Acesse sua conta para continuar
+          </Text>
+
+        </View>
+
+      </View>
 
       <Image
         source={require("@/assets/images/logo.png")}
         style={styles.logo}
       />
-
-      <Text style={styles.subtitle}>
+            <Text style={styles.subtitle}>
         Entre na sua conta
       </Text>
 
@@ -99,7 +141,11 @@ export default function Login() {
 
       <View style={styles.dividerContainer}>
         <View style={styles.line} />
-        <Text style={styles.or}>ou</Text>
+
+        <Text style={styles.or}>
+          ou
+        </Text>
+
         <View style={styles.line} />
       </View>
 
@@ -119,25 +165,52 @@ export default function Login() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => router.push("/(auth)/cadastro")}
+        onPress={() =>
+          router.push("/(auth)/cadastro")
+        }
       >
         <Text style={styles.register}>
           Não possui conta? Criar conta
         </Text>
       </TouchableOpacity>
 
-    </View>
-  );
+   </SafeAreaView>
+  </>
+);
 }
 
 const styles = StyleSheet.create({
 
-  container: {
+    container: {
     flex: 1,
-    justifyContent: "center",
-    padding: 24,
+    justifyContent: "flex-start",
+    paddingHorizontal: 24,
+    paddingTop: 20,
     gap: 16,
     backgroundColor: colors.background,
+  },
+
+ header: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 35,
+  marginBottom: 35,
+},
+
+  headerText: {
+    marginLeft: 16,
+  },
+
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  description: {
+    fontSize: 16,
+    color: "#6B7280",
+    marginTop: 4,
   },
 
   logo: {
@@ -172,8 +245,7 @@ const styles = StyleSheet.create({
     color: colors.gray600,
     fontWeight: "600",
   },
-
-  googleButton: {
+    googleButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -197,5 +269,23 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 10,
   },
+  topCircle: {
+  position: "absolute",
+  top: -120,
+  right: -80,
+  width: 220,
+  height: 220,
+  borderRadius: 110,
+  backgroundColor: "#1966ca",
+},
 
+bottomCircle: {
+  position: "absolute",
+  bottom: -100,
+  left: -60,
+  width: 180,
+  height: 180,
+  borderRadius: 90,
+  backgroundColor: "#185ec0",
+},
 });
