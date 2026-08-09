@@ -158,6 +158,16 @@ function UploadProgressBar({
   );
 }
 
+function FailedBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Pressable onPress={onRetry} style={styles.failedBannerRow}>
+      <Ionicons name="alert-circle" size={14} color="#FF3B30" />
+      <Text style={styles.failedBannerText}>Falha ao enviar</Text>
+      <Text style={styles.failedBannerRetry}>Tentar novamente</Text>
+    </Pressable>
+  );
+}
+
 function SwipeableMessage({
   isMine,
   onReply,
@@ -683,14 +693,7 @@ useEffect(() => {
   };
 }, [id, user?.id]);
 
-  async function handleSendMessage() {
-  console.log({
-    text,
-    selectedImage,
-    isSending,
-    replyMessage,
-  });
-
+ async function handleSendMessage() {
   if (!user || !id || isSending) {
     return;
   }
@@ -705,8 +708,7 @@ if (
   return;
 }
 
-  try {
-    setIsSending(true);
+  setIsSending(true);
 
     const replyData = replyMessage
   ? {
@@ -754,194 +756,108 @@ if (
     }
   : undefined;
 
-    if (selectedImage) {
-      const localUri = selectedImage;
-      const captionText = text.trim();
-      const tempId = `pending-${Date.now()}`;
+  let pendingMsg: any;
 
-     setPendingMessages((prev) => [
-        ...prev,
-        {
-          id: tempId,
-          senderId: user.id,
-          senderName: user.name,
-          type: "image",
-          imageUrl: localUri,
-          text: captionText,
-          createdAt: { toDate: () => new Date() },
-          status: "sent",
-          sending: true,
-          progress: 0,
-        },
-      ]);
-
-      setSelectedImage(null);
-      setText("");
-      setReplyMessage(null);
-
-      try {
-        const imageUrl = await uploadImage(localUri, (percent) =>
-          updateMessageProgress(tempId, percent)
-        );
-
-        await sendMessage({
-          conversationId: id,
-          senderId: user.id,
-          senderName: user.name,
-          type: "image",
-          imageUrl,
-          text: captionText,
-          replyTo: replyData,
-        });
-    } finally {
-        setPendingMessages((prev) =>
-          prev.filter((message) => message.id !== tempId)
-        );
-      }
-    }
-    else if (selectedVideo) {
-      const localUri = selectedVideo;
-      const captionText = text.trim();
-      const tempId = `pending-${Date.now()}`;
-
-     setPendingMessages((prev) => [
-        ...prev,
-        {
-          id: tempId,
-          senderId: user.id,
-          senderName: user.name,
-          type: "video",
-          videoUrl: localUri,
-          text: captionText,
-          createdAt: { toDate: () => new Date() },
-          status: "sent",
-          sending: true,
-          progress: 0,
-        },
-      ]);
-
-      setSelectedVideo(null);
-      setText("");
-      setReplyMessage(null);
-
-      try {
-        const videoUrl = await uploadVideo(localUri, (percent) =>
-          updateMessageProgress(tempId, percent)
-        );
-
-        await sendMessage({
-          conversationId: id,
-          senderId: user.id,
-          senderName: user.name,
-          type: "video",
-          videoUrl,
-          text: captionText,
-          replyTo: replyData,
-        });
-      } finally {
-        setPendingMessages((prev) =>
-          prev.filter((message) => message.id !== tempId)
-        );
-      }
-    }
-  else if (selectedDocument) {
-  const docToSend = selectedDocument;
-  const tempId = `pending-${Date.now()}`;
-
-  setPendingMessages((prev) => [
-    ...prev,
-    {
-      id: tempId,
+  if (selectedImage) {
+    pendingMsg = {
+      id: `pending-${Date.now()}`,
       senderId: user.id,
       senderName: user.name,
-      type: "document",
-      documentName: docToSend.name,
-      documentSize: docToSend.size,
+      type: "image",
+      imageUrl: selectedImage,
+      text: text.trim(),
       createdAt: { toDate: () => new Date() },
       status: "sent",
       sending: true,
+      failed: false,
       progress: 0,
-    },
-  ]);
+      replyTo: replyData,
+    };
 
-  setSelectedDocument(null);
-  setText("");
-  setReplyMessage(null);
+    setSelectedImage(null);
+  } else if (selectedVideo) {
+    pendingMsg = {
+      id: `pending-${Date.now()}`,
+      senderId: user.id,
+      senderName: user.name,
+      type: "video",
+      videoUrl: selectedVideo,
+      text: text.trim(),
+      createdAt: { toDate: () => new Date() },
+      status: "sent",
+      sending: true,
+      failed: false,
+      progress: 0,
+      replyTo: replyData,
+    };
 
-  try {
-    const documentUrl = await uploadDocument(
-      docToSend.uri,
-      docToSend.name,
-      docToSend.mimeType,
-      (percent) => updateMessageProgress(tempId, percent)
-    );
-
-    await sendMessage({
-      conversationId: id,
+    setSelectedVideo(null);
+  } else if (selectedDocument) {
+    pendingMsg = {
+      id: `pending-${Date.now()}`,
       senderId: user.id,
       senderName: user.name,
       type: "document",
-      documentUrl,
-      documentName: docToSend.name,
-      documentSize: docToSend.size,
+      localUri: selectedDocument.uri,
+      mimeType: selectedDocument.mimeType,
+      documentName: selectedDocument.name,
+      documentSize: selectedDocument.size,
+      createdAt: { toDate: () => new Date() },
+      status: "sent",
+      sending: true,
+      failed: false,
+      progress: 0,
       replyTo: replyData,
-    });
-  } finally {
-    setPendingMessages((prev) =>
-      prev.filter((message) => message.id !== tempId)
-    );
+    };
+
+    setSelectedDocument(null);
+  } else if (selectedLocation) {
+    pendingMsg = {
+      id: `pending-${Date.now()}`,
+      senderId: user.id,
+      senderName: user.name,
+      type: "location",
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      locationAddress: selectedLocation.address,
+      createdAt: { toDate: () => new Date() },
+      status: "sent",
+      sending: true,
+      failed: false,
+      replyTo: replyData,
+    };
+
+    setSelectedLocation(null);
+  } else {
+    pendingMsg = {
+      id: `pending-${Date.now()}`,
+      senderId: user.id,
+      senderName: user.name,
+      type: "text",
+      text: text.trim(),
+      createdAt: { toDate: () => new Date() },
+      status: "sent",
+      sending: true,
+      failed: false,
+      replyTo: replyData,
+    };
+
+    setTyping(id, user.id, false);
   }
-}
 
-else if (selectedLocation) {
-  await sendMessage({
-    conversationId: id,
-    senderId: user.id,
-    senderName: user.name,
+  setPendingMessages((prev) => [...prev, pendingMsg]);
+  setText("");
+  setReplyMessage(null);
 
-    type: "location",
+  isNearBottomRef.current = true;
 
-    latitude: selectedLocation.latitude,
-    longitude: selectedLocation.longitude,
-    locationAddress: selectedLocation.address,
-
-    replyTo: replyData,
+  requestAnimationFrame(() => {
+    flatListRef.current?.scrollToEnd({ animated: true });
   });
 
-  setSelectedLocation(null);
-  setReplyMessage(null);
-}
+  await attemptSend(pendingMsg);
 
-    else {
-      await sendMessage({
-        conversationId: id,
-        senderId: user.id,
-        senderName: user.name,
-        type: "text",
-        text: text.trim(),
-        replyTo: replyData,
-      });
-
-      setText("");
-      await setTyping(id, user.id, false);
-      setReplyMessage(null);
-    }
-
-   isNearBottomRef.current = true;
-
-    requestAnimationFrame(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    });
-    } catch (error) {
-  console.log("ERRO AO ENVIAR:", error);
-
-  Alert.alert(
-    "Erro",
-    String(error)
-  );
-} finally {
   setIsSending(false);
-}
 }
 
 
@@ -1041,8 +957,147 @@ function updateMessageProgress(tempId: string, percent: number) {
   );
 }
 
+async function performSend(pendingMsg: any) {
+  const replyTo = pendingMsg.replyTo;
+
+  if (pendingMsg.type === "image") {
+    const imageUrl = await uploadImage(
+      pendingMsg.imageUrl,
+      (percent) => updateMessageProgress(pendingMsg.id, percent)
+    );
+
+    await sendMessage({
+      conversationId: id as string,
+      senderId: user!.id,
+      senderName: user!.name,
+      type: "image",
+      imageUrl,
+      text: pendingMsg.text,
+      replyTo,
+    });
+  } else if (pendingMsg.type === "video") {
+    const videoUrl = await uploadVideo(
+      pendingMsg.videoUrl,
+      (percent) => updateMessageProgress(pendingMsg.id, percent)
+    );
+
+    await sendMessage({
+      conversationId: id as string,
+      senderId: user!.id,
+      senderName: user!.name,
+      type: "video",
+      videoUrl,
+      text: pendingMsg.text,
+      replyTo,
+    });
+  } else if (pendingMsg.type === "document") {
+    const documentUrl = await uploadDocument(
+      pendingMsg.localUri,
+      pendingMsg.documentName,
+      pendingMsg.mimeType,
+      (percent) => updateMessageProgress(pendingMsg.id, percent)
+    );
+
+    await sendMessage({
+      conversationId: id as string,
+      senderId: user!.id,
+      senderName: user!.name,
+      type: "document",
+      documentUrl,
+      documentName: pendingMsg.documentName,
+      documentSize: pendingMsg.documentSize,
+      replyTo,
+    });
+  } else if (pendingMsg.type === "audio") {
+    const audioUrl = await uploadAudio(
+      pendingMsg.audioUrl,
+      (percent) => updateMessageProgress(pendingMsg.id, percent)
+    );
+
+    await sendMessage({
+      conversationId: id as string,
+      senderId: user!.id,
+      senderName: user!.name,
+      type: "audio",
+      audioUrl,
+      replyTo,
+    });
+  } else if (pendingMsg.type === "location") {
+    await sendMessage({
+      conversationId: id as string,
+      senderId: user!.id,
+      senderName: user!.name,
+      type: "location",
+      latitude: pendingMsg.latitude,
+      longitude: pendingMsg.longitude,
+      locationAddress: pendingMsg.locationAddress,
+      replyTo,
+    });
+  } else {
+    await sendMessage({
+      conversationId: id as string,
+      senderId: user!.id,
+      senderName: user!.name,
+      type: "text",
+      text: pendingMsg.text,
+      replyTo,
+    });
+  }
+}
+
+async function attemptSend(pendingMsg: any) {
+  try {
+    await performSend(pendingMsg);
+
+    setPendingMessages((prev) =>
+      prev.filter((message) => message.id !== pendingMsg.id)
+    );
+  } catch (error) {
+    console.log("Falha ao enviar mensagem:", error);
+
+    setPendingMessages((prev) =>
+      prev.map((message) =>
+        message.id === pendingMsg.id
+          ? { ...message, sending: false, failed: true }
+          : message
+      )
+    );
+  }
+}
+
+function retryMessage(pendingMsg: any) {
+  if (!user || !id) {
+    return;
+  }
+
+  const resetMsg = {
+    ...pendingMsg,
+    sending: true,
+    failed: false,
+    progress: 0,
+  };
+
+  setPendingMessages((prev) =>
+    prev.map((message) =>
+      message.id === pendingMsg.id ? resetMsg : message
+    )
+  );
+
+  isNearBottomRef.current = true;
+
+  requestAnimationFrame(() => {
+    flatListRef.current?.scrollToEnd({ animated: true });
+  });
+
+  attemptSend(resetMsg);
+}
+
 function handleLongPress(item: ChatMessage) {
-  if (item.deleted || item.hiddenForMe) {
+  if (
+    item.deleted ||
+    item.hiddenForMe ||
+    String(item.id).startsWith("pending-")
+  ) {
     return;
   }
 
@@ -1183,43 +1238,34 @@ async function stopRecording() {
       return;
     }
 
-    const tempId = `pending-${Date.now()}`;
+    const pendingMsg = {
+      id: `pending-${Date.now()}`,
+      senderId: user.id,
+      senderName: user.name,
+      type: "audio",
+      audioUrl: uri,
+      createdAt: { toDate: () => new Date() },
+      status: "sent",
+      sending: true,
+      failed: false,
+      progress: 0,
+    };
 
-    setPendingMessages((prev) => [
-      ...prev,
-      {
-        id: tempId,
-        senderId: user.id,
-        senderName: user.name,
-        type: "audio",
-        audioUrl: uri,
-        createdAt: { toDate: () => new Date() },
-        status: "sent",
-        sending: true,
-      },
-    ]);
+    setPendingMessages((prev) => [...prev, pendingMsg]);
 
-    try {
-      const audioUrl = await uploadAudio(uri);
+    isNearBottomRef.current = true;
 
-      await sendMessage({
-        conversationId: id,
-        senderId: user.id,
-        senderName: user.name,
-        type: "audio",
-        audioUrl,
-      });
-    } finally {
-      setPendingMessages((prev) =>
-        prev.filter((message) => message.id !== tempId)
-      );
-    }
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    });
+
+    await attemptSend(pendingMsg);
   } catch (error) {
     console.log(error);
 
     Alert.alert(
       "Erro",
-      "Não foi possível enviar o áudio."
+      "Não foi possível gravar o áudio."
     );
   }
 }
@@ -1897,8 +1943,10 @@ function getDocumentInfo(fileName?: string) {
             : ""}
         </Text>
 
-        {isMine && (
-          isSending ? (
+       {isMine && (
+          (item as any).failed ? (
+            <Ionicons name="alert-circle" size={14} color="#FF3B30" />
+          ) : isSending ? (
             <Ionicons name="time-outline" size={14} color="#FFFFFF" />
           ) : (
             <Ionicons name={statusIcon} size={16} color={item.status === "read" ? "#4FC3F7" : "#FFFFFF"} />
@@ -1907,6 +1955,10 @@ function getDocumentInfo(fileName?: string) {
       </View>
     </View>
   )
+)}
+
+{(item as any).failed && (
+  <FailedBanner onRetry={() => retryMessage(item)} />
 )}
 
                  {!item.deleted &&
@@ -1954,7 +2006,9 @@ function getDocumentInfo(fileName?: string) {
   </Text>
 
 {isMine && (
-    isSending ? (
+    (item as any).failed ? (
+      <Ionicons name="alert-circle" size={14} color="#FF3B30" />
+    ) : isSending ? (
       <Ionicons name="time-outline" size={14} color="#FFFFFF" />
     ) : (
       <Ionicons
@@ -1977,6 +2031,10 @@ function getDocumentInfo(fileName?: string) {
                               isMine={isMine}
                             />
                           )}
+
+                        {(item as any).failed && (
+                          <FailedBanner onRetry={() => retryMessage(item)} />
+                        )}
                       </Pressable>
                   )}
                  {!item.deleted &&
@@ -2030,8 +2088,10 @@ function getDocumentInfo(fileName?: string) {
                           : ""}
                       </Text>
 
-                      {isMine && (
-                        isSending ? (
+                 {isMine && (
+                        (item as any).failed ? (
+                          <Ionicons name="alert-circle" size={14} color="#FF3B30" />
+                        ) : isSending ? (
                           <Ionicons name="time-outline" size={14} color="#FFFFFF" />
                         ) : (
                           <Ionicons
@@ -2054,6 +2114,10 @@ function getDocumentInfo(fileName?: string) {
                           isMine={isMine}
                         />
                       )}
+
+                    {(item as any).failed && (
+                      <FailedBanner onRetry={() => retryMessage(item)} />
+                    )}
 
                     {item.text && (
                       <Text
@@ -2114,12 +2178,17 @@ item.audioUrl && (
       item.audioUrl!
     )
   }
- onSeek={(progress) => seekAudio(item.id, progress)}
+onSeek={(progress) => seekAudio(item.id, progress)}
   onSeekStart={() => handleSeekStart(item.id, item.audioUrl!)}
   onSeekEnd={handleSeekEnd}
   onChangeSpeed={changePlaybackSpeed}
 />
 ) }
+
+{item.type === "audio" &&
+  (item as any).failed && (
+    <FailedBanner onRetry={() => retryMessage(item)} />
+  )}
 
 {!item.deleted &&
 !item.hiddenForMe &&
@@ -2251,8 +2320,10 @@ item.documentUrl && (() => {
             : ""}
         </Text>
 
-        {isMine && (
-          isSending ? (
+      {isMine && (
+          (item as any).failed ? (
+            <Ionicons name="alert-circle" size={14} color="#FF3B30" />
+          ) : isSending ? (
             <Ionicons name="time-outline" size={14} color={isMine ? "#FFF" : "#555"} />
           ) : (
             <Ionicons
@@ -2277,6 +2348,12 @@ item.documentUrl && (() => {
             />
           </View>
         )}
+
+      {(item as any).failed && (
+        <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+          <FailedBanner onRetry={() => retryMessage(item)} />
+        </View>
+      )}
     </Pressable>
   );
 
@@ -2403,8 +2480,10 @@ item.longitude !== undefined && (
           : ""}
       </Text>
 
-      {isMine && (
-        isSending ? (
+     {isMine && (
+        (item as any).failed ? (
+          <Ionicons name="alert-circle" size={14} color="#FF3B30" />
+        ) : isSending ? (
           <Ionicons
             name="time-outline"
             size={14}
@@ -2423,6 +2502,12 @@ item.longitude !== undefined && (
         )
       )}
     </View>
+
+    {(item as any).failed && (
+      <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+        <FailedBanner onRetry={() => retryMessage(item)} />
+      </View>
+    )}
   </Pressable>
 )}
 
@@ -3456,5 +3541,25 @@ uploadProgressBarTrack: {
 
 uploadProgressBarFill: {
   height: "100%",
+},
+
+failedBannerRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 6,
+  gap: 6,
+},
+
+failedBannerText: {
+  fontSize: 12,
+  color: "#FF3B30",
+  fontWeight: "600",
+},
+
+failedBannerRetry: {
+  fontSize: 12,
+  color: "#1677FF",
+  fontWeight: "700",
+  marginLeft: 4,
 },
 });
