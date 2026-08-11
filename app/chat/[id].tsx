@@ -1,4 +1,6 @@
 import { AudioPlayerV2 } from "@/src/components/AudioPlayerV2";
+import { SelectedMediaBar } from "@/src/components/chat/SelectedMediaBar";
+import { VideoViewerModal } from "@/src/components/chat/VideoViewerModal";
 import { useLocationPicker } from "@/src/contexts/LocationPickerContext";
 import { useUser } from "@/src/contexts/UserContext";
 import { uploadAudio } from "@/src/services/audio";
@@ -56,7 +58,6 @@ import {
   PanResponder,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -65,7 +66,15 @@ import {
 
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 
-function ChatVideoMessage({ uri }: { uri: string }) {
+function ChatVideoMessage({
+  uri,
+  onOpen,
+  onLongPress,
+}: {
+  uri: string;
+  onOpen: (uri: string) => void;
+  onLongPress: () => void;
+}) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = false;
   });
@@ -92,13 +101,9 @@ function ChatVideoMessage({ uri }: { uri: string }) {
       />
 
       <Pressable
-        onPress={() => {
-          if (isPlaying) {
-            player.pause();
-          } else {
-            player.play();
-          }
-        }}
+        onPress={() => onOpen(uri)}
+        onLongPress={onLongPress}
+        delayLongPress={300}
         style={{
           position: "absolute",
           top: 0,
@@ -339,16 +344,10 @@ export default function ChatScreen() {
   const [selectedImages, setSelectedImages] =
     useState<string[]>([]);
 
-    const [selectedVideo, setSelectedVideo] =
-    useState<string | null>(null);
+   const [selectedVideos, setSelectedVideos] =
+useState<string[]>([]);
 
-    const selectedVideoPlayer =
-    useVideoPlayer(
-      selectedVideo ?? "",
-      (player) => {
-        player.loop = true;
-      }
-    );
+    
 
     const [selectedDocument, setSelectedDocument] =
     useState<{
@@ -380,6 +379,13 @@ export default function ChatScreen() {
 
   const [previewImage, setPreviewImage] =
     useState("");
+
+    const [videoViewerVisible, setVideoViewerVisible] =
+  useState(false);
+
+const [videoViewerUri, setVideoViewerUri] =
+  useState("");
+
     const [replyMessage, setReplyMessage] =
     useState<ChatMessage | null>(null);
 
@@ -702,7 +708,7 @@ useEffect(() => {
 if (
   !text.trim() &&
   selectedImages.length === 0 &&
-  !selectedVideo &&
+  selectedVideos.length === 0 &&
   !selectedDocument &&
   !selectedLocation
 ) {
@@ -776,24 +782,24 @@ if (
     }));
 
     setSelectedImages([]);
-  } else if (selectedVideo) {
-    pendingList = [{
-      id: `pending-${Date.now()}`,
-      senderId: user.id,
-      senderName: user.name,
-      type: "video",
-      videoUrl: selectedVideo,
-      text: text.trim(),
-      createdAt: { toDate: () => new Date() },
-      status: "sent",
-      sending: true,
-      failed: false,
-      progress: 0,
-      replyTo: replyData,
-    }];
+  } else if (selectedVideos.length > 0) {
+  pendingList = selectedVideos.map((videoUri, index) => ({
+    id: `pending-${Date.now()}-${index}`,
+    senderId: user.id,
+    senderName: user.name,
+    type: "video",
+    videoUrl: videoUri,
+    text: index === 0 ? text.trim() : "",
+    createdAt: { toDate: () => new Date() },
+    status: "sent",
+    sending: true,
+    failed: false,
+    progress: 0,
+    replyTo: replyData,
+  }));
 
-    setSelectedVideo(null);
-  } else if (selectedDocument) {
+  setSelectedVideos([]);
+} else if (selectedDocument) {
     pendingList = [{
       id: `pending-${Date.now()}`,
       senderId: user.id,
@@ -897,9 +903,12 @@ if (
     const videos = files.filter((file) => file.type === "video");
     const images = files.filter((file) => file.type !== "video");
 
-    if (videos.length > 0) {
-      setSelectedVideo(videos[0].uri);
-    }
+   if (videos.length > 0) {
+  setSelectedVideos((prev) => [
+    ...prev,
+    ...videos.map((video) => video.uri),
+  ]);
+}
 
     if (images.length > 0) {
       setSelectedImages((prev) => [
@@ -2062,89 +2071,101 @@ function getDocumentInfo(fileName?: string) {
                       </Text>
                     )}
 
-                {!item.deleted &&
-                !item.hiddenForMe &&
-                item.type === "video" &&
-                item.videoUrl && (
-                  <Pressable
-                    onLongPress={() => handleLongPress(item)}
-                    delayLongPress={300}
-                  >
-                    <ChatVideoMessage uri={item.videoUrl} />
+               {!item.deleted &&
+  !item.hiddenForMe &&
+  item.type === "video" &&
+  item.videoUrl && (
+    <>
+      <ChatVideoMessage
+        uri={item.videoUrl!}
+        onOpen={(uri) => {
+          setVideoViewerUri(uri);
+          setVideoViewerVisible(true);
+        }}
+        onLongPress={() => handleLongPress(item)}
+      />
 
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "flex-end",
-                        alignItems: "center",
-                        marginTop: 6,
-                        paddingHorizontal: 6,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: isMine ? "#EAEAEA" : "#888",
-                          marginRight: 4,
-                        }}
-                      >
-                        {item.createdAt?.toDate
-                          ? item.createdAt
-                              .toDate()
-                              .toLocaleTimeString("pt-BR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                          : ""}
-                      </Text>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          marginTop: 6,
+          paddingHorizontal: 6,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 11,
+            color: isMine ? "#EAEAEA" : "#888",
+            marginRight: 4,
+          }}
+        >
+          {item.createdAt?.toDate
+            ? item.createdAt
+                .toDate()
+                .toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+            : ""}
+        </Text>
 
-                 {isMine && (
-                        (item as any).failed ? (
-                          <Ionicons name="alert-circle" size={14} color="#FF3B30" />
-                        ) : isSending ? (
-                          <Ionicons name="time-outline" size={14} color="#FFFFFF" />
-                        ) : (
-                          <Ionicons
-                            name={statusIcon}
-                            size={16}
-                            color={
-                              item.status === "read"
-                                ? "#4FC3F7"
-                                : "#FFFFFF"
-                            }
-                          />
-                        )
-                      )}
-                    </View>
+        {isMine && (
+          (item as any).failed ? (
+            <Ionicons
+              name="alert-circle"
+              size={14}
+              color="#FF3B30"
+            />
+          ) : isSending ? (
+            <Ionicons
+              name="time-outline"
+              size={14}
+              color="#FFFFFF"
+            />
+          ) : (
+            <Ionicons
+              name={statusIcon}
+              size={16}
+              color={
+                item.status === "read"
+                  ? "#4FC3F7"
+                  : "#FFFFFF"
+              }
+            />
+          )
+        )}
+      </View>
 
-                    {isSending &&
-                      typeof (item as any).progress === "number" && (
-                        <UploadProgressBar
-                          progress={(item as any).progress}
-                          isMine={isMine}
-                        />
-                      )}
+      {isSending &&
+        typeof (item as any).progress === "number" && (
+          <UploadProgressBar
+            progress={(item as any).progress}
+            isMine={isMine}
+          />
+        )}
 
-                    {(item as any).failed && (
-                      <FailedBanner onRetry={() => retryMessage(item)} />
-                    )}
+      {(item as any).failed && (
+        <FailedBanner onRetry={() => retryMessage(item)} />
+      )}
 
-                    {item.text && (
-                      <Text
-                        style={[
-                          styles.imageCaption,
-                          isMine && styles.myMessageText,
-                        ]}
-                      >
-                        {item.text}
-                      </Text>
-                    )}
-                  </Pressable>
-                )}
+      {item.text && (
+        <Text
+          style={[
+            styles.imageCaption,
+            isMine && styles.myMessageText,
+          ]}
+        >
+          {item.text}
+        </Text>
+      )}
+    </>
+)}
 
                 {!item.deleted &&
 !item.hiddenForMe &&
-item.type === "audio" &&
+!item.deleted &&
 !item.hiddenForMe &&
 item.type === "audio" &&
 item.audioUrl && (
@@ -2533,99 +2554,20 @@ item.longitude !== undefined && (
         <View
           onLayout={(e) => setStickyBarHeight(e.nativeEvent.layout.height)}
         >
-       {selectedImages.length > 0 && (
-  <View
-    style={{
-      paddingHorizontal: 12,
-      paddingTop: 10,
-      backgroundColor: "#fff",
-      borderTopWidth: 1,
-      borderTopColor: "#E5E5E5",
-    }}
-  >
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      {selectedImages.map((uri, index) => (
-        <View key={uri + index} style={{ marginRight: 10, marginTop: 6 }}>
-          <Image
-            source={{ uri }}
-            style={{
-              width: 100,
-              height: 100,
-              borderRadius: 12,
-            }}
-          />
-
-          <Pressable
-            onPress={() =>
-              setSelectedImages((prev) =>
-                prev.filter((_, i) => i !== index)
-              )
-            }
-            style={{
-              position: "absolute",
-              top: -6,
-              right: -6,
-              backgroundColor: "#000",
-              width: 22,
-              height: 22,
-              borderRadius: 11,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <Ionicons name="close" size={14} color="#fff" />
-          </Pressable>
-        </View>
-      ))}
-    </ScrollView>
-  </View>
-)}
-
-{selectedVideo && (
-  <View
-    style={{
-      paddingHorizontal: 12,
-      paddingTop: 10,
-      backgroundColor: "#FFF",
-      borderTopWidth: 1,
-      borderTopColor: "#E5E5E5",
-    }}
-  >
-    <VideoView
-      player={selectedVideoPlayer}
-      style={{
-        width: 180,
-        height: 320,
-        borderRadius: 12,
-      }}
-      nativeControls
-      contentFit="cover"
-    />
-
-    <Pressable
-      onPress={() =>
-        setSelectedVideo(null)
-      }
-      style={{
-        position: "absolute",
-        top: 18,
-        left: 160,
-        backgroundColor: "#000",
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      <Ionicons
-        name="close"
-        size={16}
-        color="#FFF"
-      />
-    </Pressable>
-  </View>
-)}
+       <SelectedMediaBar
+  images={selectedImages}
+  videos={selectedVideos}
+  onRemoveImage={(index) =>
+    setSelectedImages((prev) =>
+      prev.filter((_, i) => i !== index)
+    )
+  }
+  onRemoveVideo={(index) =>
+    setSelectedVideos((prev) =>
+      prev.filter((_, i) => i !== index)
+    )
+  }
+/>
 
 {selectedDocument && (
   <View
@@ -2949,33 +2891,37 @@ item.longitude !== undefined && (
   />
 </Pressable>
 
-            <Pressable
-              style={[
-              styles.sendButton,
-              ((!text.trim() &&
-                selectedImages.length === 0 &&
-                !selectedVideo &&
-                !selectedDocument &&
-                !selectedLocation) ||
-                isSending) &&
-                styles.disabledButton,
-            ]}
-              onPress={handleSendMessage}
-              disabled={
-              (!text.trim() &&
-                selectedImages.length === 0 &&
-                !selectedVideo &&
-                !selectedDocument &&
-                !selectedLocation) ||
-              isSending
-            }
-            >
-              <Ionicons
-                name="send"
-                size={21}
-                color="#FFFFFF"
-              />
-            </Pressable>
+           <Pressable
+  style={[
+    styles.sendButton,
+    (
+      (
+        !text.trim() &&
+        selectedImages.length === 0 &&
+        selectedVideos.length === 0 &&
+        !selectedDocument &&
+        !selectedLocation
+      ) ||
+      isSending
+    ) && styles.disabledButton,
+  ]}
+  onPress={handleSendMessage}
+  disabled={
+    (
+      !text.trim() &&
+      selectedImages.length === 0 &&
+      selectedVideos.length === 0 &&
+      !selectedDocument &&
+      !selectedLocation
+    ) || isSending
+  }
+>
+  <Ionicons
+    name="send"
+    size={21}
+    color="#FFFFFF"
+  />
+</Pressable>
           </>
         )}
       </View>
@@ -3191,6 +3137,12 @@ item.longitude !== undefined && (
     />
   </Pressable>
       )}
+
+      <VideoViewerModal
+  visible={videoViewerVisible}
+  uri={videoViewerUri}
+  onClose={() => setVideoViewerVisible(false)}
+/>
 
     </View>
   );
