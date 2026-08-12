@@ -759,6 +759,47 @@ useEffect(() => {
   };
 }, [id, user?.id]);
 
+function formatLastSeen(lastSeen: Timestamp | null) {
+  if (!lastSeen) {
+    return "Offline";
+  }
+
+  const lastSeenDate = lastSeen.toDate();
+  const now = new Date();
+
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const lastSeenDay = new Date(
+    lastSeenDate.getFullYear(),
+    lastSeenDate.getMonth(),
+    lastSeenDate.getDate()
+  );
+
+  const time = lastSeenDate.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (lastSeenDay.getTime() === today.getTime()) {
+    return `Visto por último hoje às ${time}`;
+  }
+
+  if (lastSeenDay.getTime() === yesterday.getTime()) {
+    return `Visto por último ontem às ${time}`;
+  }
+
+  const date = lastSeenDate.toLocaleDateString("pt-BR");
+
+  return `Visto por último em ${date} às ${time}`;
+}
+
  async function handleSendMessage() {
   if (!user || !id || isSending) {
     return;
@@ -1851,17 +1892,10 @@ function getDocumentInfo(fileName?: string) {
 
             <Text style={styles.headerSubtitle}>
             {isOtherUserTyping
-              ? "✍️ Digitando..."
-              : otherUserOnline
-              ? "🟢 Online"
-              : otherUserLastSeen
-              ? `Visto por último às ${otherUserLastSeen
-                  .toDate()
-                  .toLocaleTimeString("pt-BR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}`
-              : "Offline"}
+  ? " Digitando..."
+  : otherUserOnline
+  ? "🟢 Online"
+  : formatLastSeen(otherUserLastSeen)}
           </Text>
           </View>
         </View>
