@@ -21,6 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEvent } from "expo";
 import { Audio } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import {
@@ -64,6 +65,8 @@ import {
   View
 } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 
 function ChatVideoMessage({
@@ -395,6 +398,61 @@ const [videoViewerUri, setVideoViewerUri] =
     const [pendingMessages, setPendingMessages] =
     useState<any[]>([]);
 
+
+    useEffect(() => {
+      pendingMessagesRef.current = pendingMessages;
+    }, [pendingMessages]);
+
+    useEffect(() => {
+      if (!id) return;
+
+      async function loadPendingMessages() {
+        try {
+          const stored = await AsyncStorage.getItem(
+            `pending-messages-${id}`
+          );
+
+          if (!stored) return;
+
+          const parsed = JSON.parse(stored);
+
+          if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+          const restored = parsed.map((message: any) => ({
+            ...message,
+            sending: false,
+            failed: true,
+            createdAt: { toDate: () => new Date() },
+          }));
+
+          setPendingMessages(restored);
+        } catch (error) {
+          console.log("Erro ao carregar mensagens pendentes:", error);
+        }
+      }
+
+      loadPendingMessages();
+    }, [id]);
+
+    useEffect(() => {
+      if (!id) return;
+
+      AsyncStorage.setItem(
+        `pending-messages-${id}`,
+        JSON.stringify(pendingMessages)
+      ).catch((error) => {
+        console.log("Erro ao salvar mensagens pendentes:", error);
+      });
+    }, [pendingMessages, id]);
+
+    const pendingMessagesRef = useRef<any[]>([]);
+
+    useEffect(() => {
+      pendingMessagesRef.current = pendingMessages;
+    }, [pendingMessages]);
+
+    const sendingIdsRef = useRef<Set<string>>(new Set());
+
     const highlightAnim = useRef(new Animated.Value(0)).current;
 
     const [selectedMessage, setSelectedMessage] =
@@ -622,6 +680,7 @@ useEffect(() => {
 
   return () => clearTimeout(timeout);
 }, [keyboardHeight]);
+
 
   useEffect(() => {
   if (!id || !user?.id) {
@@ -852,6 +911,38 @@ if (
     setTyping(id, user.id, false);
   }
 
+  const connection = await NetInfo.fetch();
+
+const isOffline =
+  connection.isConnected !== true ||
+  connection.isInternetReachable !== true;
+
+if (isOffline) {
+  setPendingMessages((prev) => [
+    ...prev,
+    ...pendingList.map((message) => ({
+      ...message,
+      sending: false,
+      failed: true,
+      progress: 0,
+    })),
+  ]);
+
+  setText("");
+  setReplyMessage(null);
+  setIsSending(false);
+
+  isNearBottomRef.current = true;
+
+  requestAnimationFrame(() => {
+    flatListRef.current?.scrollToEnd({
+      animated: true,
+    });
+  });
+
+  return;
+}
+
   setPendingMessages((prev) => [...prev, ...pendingList]);
   setText("");
   setReplyMessage(null);
@@ -867,6 +958,24 @@ if (
   setIsSending(false);
 }
 
+async function compressImage(uri: string) {
+  const result = await ImageManipulator.manipulateAsync(
+    uri,
+    [
+      {
+        resize: {
+          width: 1280,
+        },
+      },
+    ],
+    {
+      compress: 0.6,
+      format: ImageManipulator.SaveFormat.JPEG,
+    }
+  );
+
+  return result.uri;
+}
 
  async function handleSendImage() {
   if (isSending) return;
@@ -911,11 +1020,15 @@ if (
 }
 
     if (images.length > 0) {
-      setSelectedImages((prev) => [
-        ...prev,
-        ...images.map((file) => file.uri),
-      ]);
-    }
+  const compressedImages = await Promise.all(
+    images.map((file) => compressImage(file.uri))
+  );
+
+  setSelectedImages((prev) => [
+    ...prev,
+    ...compressedImages,
+  ]);
+}
 
   } catch (error) {
     Alert.alert(
@@ -966,6 +1079,36 @@ async function handleSendDocument() {
   }
 }
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  seconds = 20
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(
+            "Tempo limite excedido. Verifique sua internet."
+          )
+        );
+      }, seconds * 1000);
+    }),
+  ]);
+}
+
+function canFinishPendingMessage(messageId: string) {
+  const message = pendingMessagesRef.current.find(
+    (item) => item.id === messageId
+  );
+
+  return (
+    message &&
+    message.sending === true &&
+    message.failed !== true
+  );
+}
+
 function updateMessageProgress(tempId: string, percent: number) {
   setPendingMessages((prev) =>
     prev.map((message) =>
@@ -981,11 +1124,15 @@ async function performSend(pendingMsg: any) {
 
   if (pendingMsg.type === "image") {
     const imageUrl = await uploadImage(
-      pendingMsg.imageUrl,
-      (percent) => updateMessageProgress(pendingMsg.id, percent)
-    );
+  pendingMsg.imageUrl,
+  (percent) => updateMessageProgress(pendingMsg.id, percent)
+);
 
-    await sendMessage({
+if (!canFinishPendingMessage(pendingMsg.id)) {
+  return;
+}
+
+await sendMessage({
       conversationId: id as string,
       senderId: user!.id,
       senderName: user!.name,
@@ -1065,11 +1212,33 @@ async function performSend(pendingMsg: any) {
 }
 
 async function attemptSend(pendingMsg: any) {
+  if (sendingIdsRef.current.has(pendingMsg.id)) {
+    return;
+  }
+
+  sendingIdsRef.current.add(pendingMsg.id);
+
   try {
-    await performSend(pendingMsg);
+    const timeoutSeconds =
+      pendingMsg.type === "video"
+        ? 60
+        : pendingMsg.type === "image"
+        ? 45
+        : pendingMsg.type === "audio"
+        ? 45
+        : pendingMsg.type === "document"
+        ? 45
+        : 20;
+
+    await withTimeout(
+      performSend(pendingMsg),
+      timeoutSeconds
+    );
 
     setPendingMessages((prev) =>
-      prev.filter((message) => message.id !== pendingMsg.id)
+      prev.filter(
+        (message) => message.id !== pendingMsg.id
+      )
     );
   } catch (error) {
     console.log("Falha ao enviar mensagem:", error);
@@ -1077,15 +1246,44 @@ async function attemptSend(pendingMsg: any) {
     setPendingMessages((prev) =>
       prev.map((message) =>
         message.id === pendingMsg.id
-          ? { ...message, sending: false, failed: true }
+          ? {
+              ...message,
+              sending: false,
+              failed: true,
+            }
           : message
       )
     );
+  } finally {
+    sendingIdsRef.current.delete(pendingMsg.id);
   }
 }
 
-function retryMessage(pendingMsg: any) {
+async function retryMessage(pendingMsg: any) {
   if (!user || !id) {
+    return;
+  }
+
+  const connection = await NetInfo.fetch();
+
+  const hasInternet =
+    connection.isConnected === true &&
+    connection.isInternetReachable === true;
+
+  if (!hasInternet) {
+    setPendingMessages((prev) =>
+      prev.map((message) =>
+        message.id === pendingMsg.id
+          ? {
+              ...message,
+              sending: false,
+              failed: true,
+              progress: 0,
+            }
+          : message
+      )
+    );
+
     return;
   }
 
@@ -1098,17 +1296,21 @@ function retryMessage(pendingMsg: any) {
 
   setPendingMessages((prev) =>
     prev.map((message) =>
-      message.id === pendingMsg.id ? resetMsg : message
+      message.id === pendingMsg.id
+        ? resetMsg
+        : message
     )
   );
 
   isNearBottomRef.current = true;
 
   requestAnimationFrame(() => {
-    flatListRef.current?.scrollToEnd({ animated: true });
+    flatListRef.current?.scrollToEnd({
+      animated: true,
+    });
   });
 
-  attemptSend(resetMsg);
+  await attemptSend(resetMsg);
 }
 
 function handleLongPress(item: ChatMessage) {
