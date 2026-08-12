@@ -2100,16 +2100,42 @@ function getDocumentInfo(fileName?: string) {
                         />
                       ) : null}
 
-                      {item.replyTo.type === "video" ? (
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            color: isMine ? "#FFFFFF" : "#555",
-                          }}
-                        >
-                          🎥 Vídeo
-                        </Text>
-                      ) : null}
+                   {item.replyTo.type === "video" ? (
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+    }}
+  >
+    <View
+      style={{
+        width: 55,
+        height: 55,
+        borderRadius: 8,
+        backgroundColor: "#111",
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 8,
+      }}
+    >
+      <Ionicons
+        name="play"
+        size={24}
+        color="#FFF"
+      />
+    </View>
+
+    <Text
+      numberOfLines={1}
+      style={{
+        color: isMine ? "#FFFFFF" : "#555",
+        flex: 1,
+      }}
+    >
+      Vídeo
+    </Text>
+  </View>
+) : null}
 
                      {item.replyTo.type === "document" ? (
                             <Text
@@ -2988,23 +3014,63 @@ item.longitude !== undefined && (
         Respondendo {replyMessage.senderName}
       </Text>
 
-     <Text
-        numberOfLines={1}
-        style={{
-          color: "#555",
-          marginTop: 2,
-        }}
-      >
-        {replyMessage.type === "image"
-          ? "📷 Foto"
-          : replyMessage.type === "video"
-          ? "🎥 Vídeo"
-          : replyMessage.type === "document"
-          ? `📄 ${replyMessage.documentName ?? "Documento"}`
-          : replyMessage.type === "audio"
-          ? "🎤 Áudio"
-          : replyMessage.text}
-      </Text>
+     <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    paddingRight: 35,
+  }}
+>
+  {replyMessage.type === "image" &&
+  replyMessage.imageUrl ? (
+    <Image
+      source={{ uri: replyMessage.imageUrl }}
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 8,
+        marginRight: 8,
+      }}
+    />
+  ) : replyMessage.type === "video" ? (
+    <View
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 8,
+        marginRight: 8,
+        backgroundColor: "#111",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Ionicons
+        name="videocam"
+        size={22}
+        color="#FFF"
+      />
+    </View>
+  ) : null}
+
+  <Text
+    numberOfLines={1}
+    style={{
+      color: "#555",
+      flex: 1,
+    }}
+  >
+    {replyMessage.type === "image"
+      ? replyMessage.text || "Foto"
+      : replyMessage.type === "video"
+      ? replyMessage.text || "Vídeo"
+      : replyMessage.type === "document"
+      ? `📄 ${replyMessage.documentName ?? "Documento"}`
+      : replyMessage.type === "audio"
+      ? "🎤 Áudio"
+      : replyMessage.text}
+  </Text>
+</View>
     </View>
 
     <Pressable
