@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
+import { useEffect } from "react";
 import { Modal, Pressable, View } from "react-native";
 
 type Props = {
@@ -17,11 +18,38 @@ export function VideoViewerModal({
     player.loop = false;
   });
 
+  function stopVideo() {
+    try {
+      player.pause();
+      player.currentTime = 0;
+    } catch (error) {
+      console.log("Erro ao parar vídeo:", error);
+    }
+  }
+
+  function handleClose() {
+    stopVideo();
+    onClose();
+  }
+
+  useEffect(() => {
+    if (!visible) {
+      stopVideo();
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    return () => {
+      stopVideo();
+    };
+  }, []);
+
   return (
     <Modal
       visible={visible}
       animationType="fade"
       transparent={false}
+      onRequestClose={handleClose}
     >
       <View
         style={{
@@ -42,7 +70,7 @@ export function VideoViewerModal({
         />
 
         <Pressable
-          onPress={onClose}
+          onPress={handleClose}
           style={{
             position: "absolute",
             top: 55,
