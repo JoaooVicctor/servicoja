@@ -2014,18 +2014,24 @@ function getDocumentInfo(fileName?: string) {
   handleLongPress(item);
 }}
                 style={{
-                  maxWidth: "80%",
+                  maxWidth: "76%",
                   alignSelf: isMine ? "flex-end" : "flex-start",
                 }}
               >
-                <Animated.View
-                  style={[
+               <Animated.View
+                    onTouchEnd={(event) => {
+                      if (item.replyTo?.id) {
+                        event.stopPropagation();
+                        scrollToReply(item.replyTo.id);
+                      }
+                    }}
+                    style={[
                     styles.messageBubble,
                     isMine
                       ? styles.myMessageBubble
                       : styles.otherMessageBubble,
-                    item.type === "image" &&
-                      styles.imageMessageBubble,
+                    (item.type === "image" || item.type === "video") &&
+                    styles.imageMessageBubble,
                     isSending && { opacity: 0.6 },
                     highlightedMessageId === item.id && {
                       backgroundColor: highlightAnim.interpolate({
@@ -2047,15 +2053,25 @@ function getDocumentInfo(fileName?: string) {
                   {!item.deleted &&
                   !item.hiddenForMe &&
                   item.replyTo && (
-                    <Pressable
-                      onPress={() => {
-                        if (item.replyTo && !repliedWasDeleted) {
+                   <Pressable
+                        disabled={repliedWasDeleted}
+                        hitSlop={6}
+                        onPress={(event) => {
+                          event.stopPropagation();
+
+                          if (!item.replyTo?.id || repliedWasDeleted) {
+                            return;
+                          }
+
                           scrollToReply(item.replyTo.id);
-                        }
-                      }}
-                      onLongPress={() => handleLongPress(item)}
-                      delayLongPress={300}
-                      style={{
+                        }}
+                        onLongPress={(event) => {
+                          event.stopPropagation();
+                          handleLongPress(item);
+                        }}
+                        delayLongPress={300}
+                        style={{
+                        width: "100%",
                         borderLeftWidth: 3,
                         borderLeftColor: "#1677FF",
                         backgroundColor: isMine
@@ -2193,49 +2209,77 @@ function getDocumentInfo(fileName?: string) {
     🚫 Esta mensagem foi apagada
   </Text>
 ) : (
-  (!item.type || item.type === "text") && (
-    <View
-  style={{
-    flexDirection: "row",
-    alignItems: "flex-end",
-  }}
->
-  <Text
-    style={[
-      styles.messageText,
-      isMine && styles.myMessageText,
-    ]}
-  >
-    {item.text}
-  </Text>
-
+ (!item.type || item.type === "text") && (
   <View
     style={{
-      flexDirection: "row",
-      alignItems: "center",
-      marginLeft: 6,
-      marginBottom: 1,
-      alignSelf: "flex-end",
+      maxWidth: "100%",
     }}
   >
-        <Text style={{ fontSize: 11, color: isMine ? "#EAEAEA" : "#888", marginRight: 4 }}>
-          {item.createdAt?.toDate
-            ? item.createdAt.toDate().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-            : ""}
-        </Text>
+    <Text
+      style={[
+        styles.messageText,
+        isMine && styles.myMessageText,
+        {
+          flexShrink: 1,
+          flexWrap: "wrap",
+        },
+      ]}
+    >
+      {item.text}
+    </Text>
 
-       {isMine && (
-          (item as any).failed ? (
-            <Ionicons name="alert-circle" size={14} color="#FF3B30" />
-          ) : isSending ? (
-            <Ionicons name="time-outline" size={14} color="#FFFFFF" />
-          ) : (
-            <Ionicons name={statusIcon} size={16} color={item.status === "read" ? "#4FC3F7" : "#FFFFFF"} />
-          )
-        )}
-      </View>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        marginTop: 4,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 11,
+          color: isMine ? "#EAEAEA" : "#888",
+          marginRight: 4,
+        }}
+      >
+        {item.createdAt?.toDate
+          ? item.createdAt
+              .toDate()
+              .toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+          : ""}
+      </Text>
+
+      {isMine &&
+        ((item as any).failed ? (
+          <Ionicons
+            name="alert-circle"
+            size={14}
+            color="#FF3B30"
+          />
+        ) : isSending ? (
+          <Ionicons
+            name="time-outline"
+            size={14}
+            color="#FFFFFF"
+          />
+        ) : (
+          <Ionicons
+            name={statusIcon}
+            size={16}
+            color={
+              item.status === "read"
+                ? "#4FC3F7"
+                : "#FFFFFF"
+            }
+          />
+        ))}
     </View>
-  )
+  </View>
+)
 )}
 
 {(item as any).failed && (
@@ -3539,7 +3583,7 @@ messageBubble: {
 },
 
 imageMessageBubble: {
-  padding: 4,
+  paddingHorizontal: 2,
 },
 
 myMessageBubble: {
