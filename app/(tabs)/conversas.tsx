@@ -3,10 +3,11 @@ import { hideConversation } from "@/src/services/chat";
 import { db } from "@/src/services/firebase";
 import { Conversation } from "@/src/types/Chat";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, Stack } from "expo-router";
 
 import {
   collection,
+  doc,
   onSnapshot,
   query,
   where,
@@ -23,6 +24,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -34,6 +36,19 @@ export default function ConversationsScreen() {
 
   const [isLoading, setIsLoading] =
     useState(true);
+
+    const [searchText, setSearchText] =
+  useState("");
+
+    const [userStatus, setUserStatus] = useState<
+  Record<
+    string,
+    {
+      online: boolean;
+      photoURL: string | null;
+    }
+  >
+>({});
 
   useEffect(() => {
     if (!user?.id) {
@@ -104,6 +119,46 @@ setIsLoading(false);
     return unsubscribe;
   }, [user?.id]);
 
+  useEffect(() => {
+  if (!user?.id || conversations.length === 0) {
+    return;
+  }
+
+  const otherUserIds = Array.from(
+    new Set(
+      conversations
+        .map((conversation) =>
+          getOtherPersonId(conversation)
+        )
+        .filter(Boolean)
+    )
+  );
+
+  const unsubscribes = otherUserIds.map(
+    (otherUserId) =>
+      onSnapshot(
+        doc(db, "users", otherUserId),
+        (snapshot) => {
+          const data = snapshot.data();
+
+          setUserStatus((prev) => ({
+            ...prev,
+            [otherUserId]: {
+              online: data?.online === true,
+              photoURL: data?.photoURL ?? null,
+            },
+          }));
+        }
+      )
+  );
+
+  return () => {
+    unsubscribes.forEach((unsubscribe) =>
+      unsubscribe()
+    );
+  };
+}, [user?.id, conversations]);
+
   function openConversation(
     conversationId: string
   ) {
@@ -140,6 +195,20 @@ setIsLoading(false);
       },
     ]
   );
+}
+
+function getOtherPersonId(
+  conversation: Conversation
+) {
+  if (!user) {
+    return "";
+  }
+
+  if (conversation.customerId === user.id) {
+    return conversation.ownerId;
+  }
+
+  return conversation.customerId;
 }
 
   function getOtherPersonName(
@@ -196,6 +265,36 @@ setIsLoading(false);
     );
   }
 
+  function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+const filteredConversations =
+  conversations.filter((conversation) => {
+    const search = normalizeSearchText(searchText);
+
+    if (!search) {
+      return true;
+    }
+
+    const personName = normalizeSearchText(
+      getOtherPersonName(conversation)
+    );
+
+    const serviceTitle = normalizeSearchText(
+      conversation.serviceTitle ?? ""
+    );
+
+    return (
+      personName.includes(search) ||
+      serviceTitle.includes(search)
+    );
+  });
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -212,7 +311,8 @@ setIsLoading(false);
   }
 
   return (
-    <View style={styles.container}>
+  <View style={styles.container}>
+    <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
           Conversas
@@ -221,15 +321,44 @@ setIsLoading(false);
         <Text style={styles.headerDescription}>
           Suas mensagens sobre serviços
         </Text>
+
+        <View style={styles.searchContainer}>
+  <Ionicons
+    name="search-outline"
+    size={20}
+    color="#8A8A8A"
+  />
+
+  <TextInput
+    style={styles.searchInput}
+    placeholder="Pesquisar conversa ou anúncio"
+    placeholderTextColor="#9A9A9A"
+    value={searchText}
+    onChangeText={setSearchText}
+  />
+
+  {searchText.length > 0 && (
+    <Pressable
+      onPress={() => setSearchText("")}
+      hitSlop={10}
+    >
+      <Ionicons
+        name="close-circle"
+        size={20}
+        color="#A0A0A0"
+      />
+    </Pressable>
+  )}
+</View>
       </View>
 
       <FlatList
-        data={conversations}
+        data={filteredConversations}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
-          conversations.length === 0 &&
-            styles.emptyListContent,
+          filteredConversations.length === 0 &&
+          styles.emptyListContent,
         ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -243,15 +372,17 @@ setIsLoading(false);
             </View>
 
             <Text style={styles.emptyTitle}>
-              Nenhuma conversa
+              {searchText.trim()
+                ? "Nenhuma conversa encontrada"
+                : "Nenhuma conversa"}
             </Text>
 
             <Text
               style={styles.emptyDescription}
             >
-              Quando você conversar com um
-              anunciante, a conversa aparecerá
-              aqui.
+             {searchText.trim()
+                ? "Tente pesquisar por outro nome ou anúncio."
+                : "Quando você conversar com um anunciante, a conversa aparecerá aqui."}
             </Text>
 
             <Pressable
@@ -275,9 +406,17 @@ setIsLoading(false);
           </View>
         }
         renderItem={({ item }) => {
-          console.log("ITEM MOBILE:", JSON.stringify(item)); // ADICIONE ESSA LINHA
+    
           const otherPersonName =
             getOtherPersonName(item);
+
+            const otherPersonId =
+            getOtherPersonId(item);
+
+          const otherUserStatus =
+            userStatus[otherPersonId];
+
+          const avatarPhoto = item.serviceImage;
 
           return (
             <Pressable
@@ -290,26 +429,36 @@ setIsLoading(false);
               }
               delayLongPress={300}
             >
-              {item.serviceImage ? (
-                <Image
-                  source={{
-                    uri: item.serviceImage,
-                  }}
-                  style={styles.serviceImage}
-                />
-              ) : (
-                <View
-                  style={
-                    styles.imagePlaceholder
-                  }
-                >
-                  <Ionicons
-                    name="briefcase-outline"
-                    size={26}
-                    color="#1677FF"
-                  />
-                </View>
-              )}
+              <View style={styles.avatarWrapper}>
+  {avatarPhoto ? (
+    <Image
+      source={{
+        uri: avatarPhoto,
+      }}
+      style={styles.serviceImage}
+    />
+  ) : (
+    <View style={styles.imagePlaceholder}>
+      <Ionicons
+  name="briefcase-outline"
+  size={31}
+  color="#1677FF"
+/>
+    </View>
+  )}
+
+  <View
+    style={[
+      styles.onlineDot,
+      {
+        backgroundColor:
+          otherUserStatus?.online === true
+            ? "#20D45A"
+            : "#B8B8B8",
+      },
+    ]}
+  />
+</View>
 
               <View
                 style={
@@ -370,21 +519,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F6F8",
   },
 
-  header: {
-    paddingTop:
-      Platform.OS === "web" ? 25 : 56,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#EAEAEA",
-  },
+ header: {
+  paddingTop:
+    Platform.OS === "web" ? 25 : 58,
+  paddingHorizontal: 24,
+  paddingBottom: 22,
+  backgroundColor: "#F5F6F8",
+},
 
   headerTitle: {
-    fontSize: 27,
-    fontWeight: "900",
-    color: "#202020",
-  },
+  fontSize: 35,
+  fontWeight: "900",
+  color: "#0F172A",
+},
 
   headerDescription: {
     fontSize: 14,
@@ -392,41 +539,46 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  listContent: {
-    paddingHorizontal: 15,
-    paddingTop: 14,
-    paddingBottom: 100,
-  },
+ listContent: {
+  paddingHorizontal: 22,
+  paddingTop: 10,
+  paddingBottom: 120,
+},
 
   emptyListContent: {
     flexGrow: 1,
   },
 
   conversationCard: {
-    minHeight: 92,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    marginBottom: 11,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  minHeight: 112,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 24,
+  marginBottom: 16,
+  padding: 16,
+  flexDirection: "row",
+  alignItems: "center",
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.05,
+  shadowRadius: 14,
+  elevation: 3,
+},
 
   serviceImage: {
-    width: 66,
-    height: 66,
-    borderRadius: 13,
-    backgroundColor: "#E8E8E8",
-  },
+  width: 70,
+  height: 70,
+  borderRadius: 35,
+  backgroundColor: "#E8E8E8",
+},
 
   imagePlaceholder: {
-    width: 66,
-    height: 66,
-    borderRadius: 13,
-    backgroundColor: "#EAF3FF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  width: 70,
+  height: 70,
+  borderRadius: 35,
+  backgroundColor: "#EAF3FF",
+  alignItems: "center",
+  justifyContent: "center",
+},
 
   conversationInformation: {
     flex: 1,
@@ -528,4 +680,44 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
   },
+  avatarWrapper: {
+  width: 74,
+  height: 74,
+  position: "relative",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+onlineDot: {
+  position: "absolute",
+  right: 3,
+  bottom: 5,
+  width: 17,
+  height: 17,
+  borderRadius: 9,
+  borderWidth: 3,
+  borderColor: "#FFFFFF",
+},
+searchContainer: {
+  height: 50,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 25,
+  marginTop: 18,
+  paddingHorizontal: 16,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 10,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.04,
+  shadowRadius: 10,
+  elevation: 2,
+},
+
+searchInput: {
+  flex: 1,
+  fontSize: 15,
+  color: "#202020",
+  paddingVertical: 0,
+},
 });

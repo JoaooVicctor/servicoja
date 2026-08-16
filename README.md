@@ -528,7 +528,7 @@ function scrollToReply(messageId: string) {
                       minute: "2-digit",
                     })}`
                 : "Offline"}
-            </Text>
+            </Text>z
           </View>
         </View>
       </View>
@@ -946,24 +946,34 @@ function scrollToReply(messageId: string) {
         />
 
         <Pressable
-          style={[
-          styles.sendButton,
-          ((!text.trim() && !selectedImage) ||
-            isSending) &&
-            styles.disabledButton,
-        ]}
-          onPress={handleSendMessage}
-          disabled={
-          (!text.trim() && !selectedImage) ||
-          isSending
-          }
-          >
-          <Ionicons
-            name="send"
-            size={21}
-            color="#FFFFFF"
-          />
-        </Pressable>
+  style={[
+    styles.sendButton,
+    (
+      (!text.trim() &&
+        selectedImages.length === 0 &&
+        selectedVideos.length === 0 &&
+        !selectedDocument &&
+        !selectedLocation) ||
+      isSending
+    ) && styles.disabledButton,
+  ]}
+  onPress={handleSendMessage}
+  disabled={
+    (
+      !text.trim() &&
+      selectedImages.length === 0 &&
+      selectedVideos.length === 0 &&
+      !selectedDocument &&
+      !selectedLocation
+    ) || isSending
+  }
+>
+  <Ionicons
+    name="send"
+    size={21}
+    color="#FFFFFF"
+  />
+</Pressable>
       </View>
       <Modal
   visible={menuVisible}

@@ -80,7 +80,7 @@ export default function RootLayout() {
       <UserProvider>
         <ServiceProvider>
           <FavoritesProvider>
-            <Stack />
+            <AppContent />
           </FavoritesProvider>
         </ServiceProvider>
       </UserProvider>

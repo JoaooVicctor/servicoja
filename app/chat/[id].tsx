@@ -31,6 +31,7 @@ import {
 
 import {
   router,
+  Stack,
   useLocalSearchParams,
 } from "expo-router";
 
@@ -56,18 +57,28 @@ import {
   FlatList,
   Image,
   Keyboard,
+  LayoutAnimation,
   PanResponder,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View
 } from "react-native";
+
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function ChatVideoMessage({
   uri,
@@ -304,6 +315,8 @@ function SwipeableMessage({
 }
 
 export default function ChatScreen() {
+  const insets = useSafeAreaInsets();
+
   const { id } = useLocalSearchParams<{
     id: string;
   }>();
@@ -319,8 +332,10 @@ export default function ChatScreen() {
  const flatListRef =
     useRef<FlatList<ChatMessage>>(null);
 
-  const previousMessageCountRef = useRef(0);
-  const isNearBottomRef = useRef(true);
+
+const previousMessageCountRef = useRef(0);
+const isNearBottomRef = useRef(true);
+const didInitialScrollRef = useRef(false);
 
     const messageRefs = useRef<
     Record<string, View | null>
@@ -521,9 +536,29 @@ const [playbackRate, setPlaybackRate] =
   const [otherUserPhoto, setOtherUserPhoto] =
   useState<string | null>(null);
 
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [stickyBarHeight, setStickyBarHeight] = useState(80);
+const [keyboardHeight, setKeyboardHeight] = useState(0);
+const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+
+function scrollToEndAfterKeyboard() {
+  flatListRef.current?.scrollToEnd({
+    animated: false,
+  });
+}
+const [stickyBarHeight, setStickyBarHeight] = useState(80);
+
+const inputBottomPadding = keyboardVisible
+  ? 10
+  : Math.max(insets.bottom, 12);
+
+const headerTopPadding =
+  Platform.OS === "web" ? 18 : insets.top + 10;
+
+  useEffect(() => {
+  didInitialScrollRef.current = false;
+  previousMessageCountRef.current = 0;
+  isNearBottomRef.current = true;
+}, [id]);
 
  useEffect(() => {
   if (!id || !user?.id) {
@@ -654,11 +689,33 @@ useEffect(() => {
 
 useEffect(() => {
   const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+    const wasNearBottom = isNearBottomRef.current;
+
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(
+        250,
+        LayoutAnimation.Types.easeInEaseOut,
+        LayoutAnimation.Properties.opacity
+      )
+    );
+
     setKeyboardVisible(true);
     setKeyboardHeight(e.endCoordinates.height);
+
+    if (wasNearBottom) {
+      setTimeout(scrollToEndAfterKeyboard, 80);
+    }
   });
 
   const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(
+        250,
+        LayoutAnimation.Types.easeInEaseOut,
+        LayoutAnimation.Properties.opacity
+      )
+    );
+
     setKeyboardVisible(false);
     setKeyboardHeight(0);
   });
@@ -668,18 +725,6 @@ useEffect(() => {
     hideSub.remove();
   };
 }, []);
-
-useEffect(() => {
-  if (!isNearBottomRef.current) {
-    return;
-  }
-
-  const timeout = setTimeout(() => {
-    flatListRef.current?.scrollToEnd({ animated: false });
-  }, 50);
-
-  return () => clearTimeout(timeout);
-}, [keyboardHeight]);
 
 
   useEffect(() => {
@@ -1836,7 +1881,16 @@ function getDocumentInfo(fileName?: string) {
 
     return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      <View
+  style={[
+    styles.header,
+    {
+      paddingTop: headerTopPadding,
+    },
+  ]}
+>
         <Pressable
           style={styles.backButton}
           onPress={() => router.back()}
@@ -1907,8 +1961,24 @@ function getDocumentInfo(fileName?: string) {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="none"
         onScroll={handleScroll}
-        scrollEventThrottle={16}
-        data={[...messages, ...pendingMessages].sort((a, b) => {
+scrollEventThrottle={16}
+onContentSizeChange={() => {
+  const total =
+    messages.length + pendingMessages.length;
+
+  if (total === 0 || didInitialScrollRef.current) {
+    return;
+  }
+
+  didInitialScrollRef.current = true;
+
+  requestAnimationFrame(() => {
+    flatListRef.current?.scrollToEnd({
+      animated: false,
+    });
+  });
+}}
+data={[...messages, ...pendingMessages].sort((a, b) => {
           const aTime = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : Date.now();
           const bTime = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : Date.now();
           return aTime - bTime;
@@ -1923,12 +1993,12 @@ function getDocumentInfo(fileName?: string) {
         }, 500);
       }}
         keyExtractor={(item) => item.id}
-       contentContainerStyle={styles.messagesContent}
-      ListFooterComponent={
+      contentContainerStyle={styles.messagesContent}
+ListFooterComponent={
   <View
     style={{
       height: keyboardVisible
-        ? stickyBarHeight + 270
+        ? keyboardHeight + stickyBarHeight + 20
         : 8,
     }}
   />
@@ -2209,10 +2279,12 @@ function getDocumentInfo(fileName?: string) {
     🚫 Esta mensagem foi apagada
   </Text>
 ) : (
- (!item.type || item.type === "text") && (
+(!item.type || item.type === "text") && (
   <View
     style={{
       maxWidth: "100%",
+      flexDirection: "row",
+      alignItems: "flex-end",
     }}
   >
     <Text
@@ -2232,8 +2304,8 @@ function getDocumentInfo(fileName?: string) {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "flex-end",
-        marginTop: 4,
+        marginLeft: 8,
+        marginBottom: 1,
       }}
     >
       <Text
@@ -2856,10 +2928,12 @@ item.longitude !== undefined && (
         }}
       />
 
-     <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-        <View
-          onLayout={(e) => setStickyBarHeight(e.nativeEvent.layout.height)}
-        >
+   <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+  <View
+    onLayout={(event) => {
+      setStickyBarHeight(event.nativeEvent.layout.height);
+    }}
+  >
        <SelectedMediaBar
   images={selectedImages}
   videos={selectedVideos}
@@ -3136,7 +3210,14 @@ item.longitude !== undefined && (
   </View>
 )}
 
-        <View style={styles.inputContainer}>
+        <View
+  style={[
+    styles.inputContainer,
+    {
+      paddingBottom: inputBottomPadding,
+    },
+  ]}
+>
         {isRecording ? (
           <>
             <Pressable
@@ -3219,7 +3300,7 @@ item.longitude !== undefined && (
   }
 }, 1000);
 }}
-              multiline
+multiline
             />
 
             <Pressable
@@ -3502,8 +3583,7 @@ const styles = StyleSheet.create({
 },
 
 header: {
-  paddingTop:
-    Platform.OS === "web" ? 18 : 50,
+  paddingTop: 0,
   paddingBottom: 14,
   paddingHorizontal: 16,
   backgroundColor: "#FFFFFF",
@@ -3651,8 +3731,7 @@ inputContainer: {
   borderTopColor: "#E5E5E5",
   paddingHorizontal: 12,
   paddingTop: 10,
-  paddingBottom:
-    Platform.OS === "ios" ? 25 : 12,
+  paddingBottom: 0,
   flexDirection: "row",
   alignItems: "flex-end",
   gap: 9,
