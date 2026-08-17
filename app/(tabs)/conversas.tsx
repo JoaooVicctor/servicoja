@@ -418,6 +418,9 @@ const filteredConversations =
 
           const avatarPhoto = item.serviceImage;
 
+          const unreadCount =
+            item.unreadCounts?.[user?.id ?? ""] ?? 0;
+
           return (
             <Pressable
               style={styles.conversationCard}
@@ -465,9 +468,12 @@ const filteredConversations =
                   styles.conversationInformation
                 }
               >
-                <View style={styles.topRow}>
+               <View style={styles.topRow}>
                   <Text
-                    style={styles.personName}
+                    style={[
+                      styles.personName,
+                      unreadCount > 0 && styles.personNameUnread,
+                    ]}
                     numberOfLines={1}
                   >
                     {otherPersonName}
@@ -491,13 +497,32 @@ const filteredConversations =
                   {item.serviceTitle}
                 </Text>
 
-                <Text
-                  style={styles.lastMessage}
-                  numberOfLines={1}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
                 >
-                  {item.lastMessage ||
-                    "Conversa iniciada"}
-                </Text>
+                  <Text
+                    style={[
+                      styles.lastMessage,
+                      unreadCount > 0 && styles.lastMessageUnread,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.lastMessage ||
+                      "Conversa iniciada"}
+                  </Text>
+
+                  {unreadCount > 0 && (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
 
               <Ionicons
@@ -719,5 +744,32 @@ searchInput: {
   fontSize: 15,
   color: "#202020",
   paddingVertical: 0,
+},
+
+personNameUnread: {
+  color: "#0F172A",
+  fontWeight: "900",
+},
+
+lastMessageUnread: {
+  color: "#202020",
+  fontWeight: "700",
+},
+
+unreadBadge: {
+  minWidth: 22,
+  height: 22,
+  borderRadius: 11,
+  backgroundColor: "#20D45A",
+  alignItems: "center",
+  justifyContent: "center",
+  paddingHorizontal: 6,
+  marginLeft: 8,
+},
+
+unreadBadgeText: {
+  color: "#FFFFFF",
+  fontSize: 11,
+  fontWeight: "800",
 },
 });

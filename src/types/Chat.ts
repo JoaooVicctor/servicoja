@@ -3,6 +3,7 @@ import { Timestamp } from "firebase/firestore";
 export type MessageType =
   | "text"
   | "image"
+  | "video"
   | "audio"
   | "document"
   | "location";
@@ -28,6 +29,8 @@ export interface Conversation {
   lastMessageId?: string;
   lastMessageAt: any;
 
+  unreadCounts?: Record<string, number>;
+
   createdAt: any;
 }
 
@@ -41,6 +44,7 @@ export interface ReplyMessage {
 
   text?: string;
   imageUrl?: string;
+  videoUrl?: string;
   audioUrl?: string;
 
   documentUrl?: string;
@@ -64,6 +68,7 @@ export interface ChatMessage {
 
   text?: string;
   imageUrl?: string;
+  videoUrl?: string;
   audioUrl?: string;
   documentUrl?: string;
 

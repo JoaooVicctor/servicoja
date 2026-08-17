@@ -1,4 +1,5 @@
 import { db } from "@/src/services/firebase";
+import { sendPushNotifications } from "@/src/services/notifications";
 import type {
   MessageType,
   ReplyMessage,
@@ -12,6 +13,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   query,
@@ -171,10 +173,15 @@ export async function startConversation(
     ownerName,
     ownerPhoto,
 
-    lastMessage: "",
-    lastMessageAt: serverTimestamp(),
+   lastMessage: "",
+lastMessageAt: serverTimestamp(),
 
-    createdAt: serverTimestamp(),
+unreadCounts: {
+  [customerId]: 0,
+  [ownerId]: 0,
+},
+
+createdAt: serverTimestamp(),
   };
 
   if (serviceImage) {
@@ -319,6 +326,10 @@ export async function sendMessage(
   let initialStatus: "sent" | "delivered" =
   "sent";
 
+let recipientId = "";
+let recipientIsInsideThisConversation = false;
+let recipientPushTokens: string[] = [];
+
 const conversationSnapshot =
   await getDoc(conversationReference);
 
@@ -331,11 +342,11 @@ if (conversationSnapshot.exists()) {
       | string[]
       | undefined;
 
-  const recipientId =
-    participantIds?.find(
-      (participantId) =>
-        participantId !== senderId
-    );
+  recipientId =
+  participantIds?.find(
+    (participantId) =>
+      participantId !== senderId
+  ) ?? "";
 
   if (recipientId) {
     const recipientReference = doc(
@@ -347,12 +358,31 @@ if (conversationSnapshot.exists()) {
     const recipientSnapshot =
       await getDoc(recipientReference);
 
-    if (
-      recipientSnapshot.exists() &&
-      recipientSnapshot.data().online === true
-    ) {
-      initialStatus = "delivered";
-    }
+    if (recipientSnapshot.exists()) {
+  const recipientData =
+    recipientSnapshot.data();
+
+  if (recipientData.online === true) {
+    initialStatus = "delivered";
+  }
+
+  recipientIsInsideThisConversation =
+    recipientData.online === true &&
+    recipientData.activeConversationId ===
+      conversationId;
+
+  if (
+    Array.isArray(
+      recipientData.expoPushTokens
+    )
+  ) {
+    recipientPushTokens =
+      recipientData.expoPushTokens.filter(
+        (token: unknown) =>
+          typeof token === "string"
+      );
+  }
+}
   }
 }
 
@@ -446,16 +476,46 @@ if (type === "location") {
   lastMessage = "📍 Localização";
 }
 
-  await updateDoc(
+ const conversationUpdate: Record<
+  string,
+  unknown
+> = {
+  lastMessage,
+  lastMessageId:
+    createdMessageReference.id,
+  lastMessageAt:
+    serverTimestamp(),
+};
+
+if (
+  recipientId &&
+  !recipientIsInsideThisConversation
+) {
+  conversationUpdate[
+    `unreadCounts.${recipientId}`
+  ] = increment(1);
+}
+
+await updateDoc(
   conversationReference,
-  {
-    lastMessage,
-    lastMessageId:
-      createdMessageReference.id,
-    lastMessageAt:
-      serverTimestamp(),
-  }
+  conversationUpdate
 );
+
+if (
+  recipientId &&
+  !recipientIsInsideThisConversation &&
+  recipientPushTokens.length > 0
+) {
+  await sendPushNotifications({
+    tokens: recipientPushTokens,
+    title: senderName,
+    body: lastMessage || "Nova mensagem",
+    data: {
+      type: "chat",
+      conversationId,
+    },
+  });
+}
 }
 
 export async function deleteMessageForEveryone(
@@ -647,6 +707,13 @@ export async function markMessagesAsDelivered(
   );
 
   await Promise.all(updates);
+
+  await updateDoc(
+  doc(db, "conversations", conversationId),
+  {
+    [`unreadCounts.${userId}`]: 0,
+  }
+);
 }
 
 export async function hideConversation(

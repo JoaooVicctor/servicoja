@@ -42,7 +42,9 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   Timestamp,
+  updateDoc,
 } from "firebase/firestore";
 
 import {
@@ -553,6 +555,42 @@ const inputBottomPadding = keyboardVisible
 
 const headerTopPadding =
   Platform.OS === "web" ? 18 : insets.top + 10;
+
+  useEffect(() => {
+  if (!id || !user?.id) {
+    return;
+  }
+
+  const userReference = doc(
+    db,
+    "users",
+    user.id
+  );
+
+  updateDoc(userReference, {
+    activeConversationId: id,
+    activeConversationUpdatedAt:
+      serverTimestamp(),
+  }).catch((error) => {
+    console.log(
+      "Erro ao marcar conversa ativa:",
+      error
+    );
+  });
+
+  return () => {
+    updateDoc(userReference, {
+      activeConversationId: null,
+      activeConversationUpdatedAt:
+        serverTimestamp(),
+    }).catch((error) => {
+      console.log(
+        "Erro ao limpar conversa ativa:",
+        error
+      );
+    });
+  };
+}, [id, user?.id]);
 
   useEffect(() => {
   didInitialScrollRef.current = false;
