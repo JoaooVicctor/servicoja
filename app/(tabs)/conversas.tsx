@@ -84,20 +84,16 @@ export default function ConversationsScreen() {
           );
         });
 
-      const visibleConversations =
-        myConversations.filter((conversation) => {
-          const isHidden =
-            conversation.hiddenFor?.includes(
-              currentUserId
-            );
+     const visibleConversations =
+  myConversations.filter((conversation) => {
+    const hiddenFor = Array.isArray(
+      conversation.hiddenFor
+    )
+      ? conversation.hiddenFor.map(String)
+      : [];
 
-          const unreadCount =
-            conversation.unreadCounts?.[
-              currentUserId
-            ] ?? 0;
-
-          return !isHidden || unreadCount > 0;
-        });
+    return !hiddenFor.includes(currentUserId);
+  });
 
       visibleConversations.sort((a, b) => {
         const timeA =

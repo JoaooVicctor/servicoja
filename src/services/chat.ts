@@ -142,7 +142,7 @@ export async function startConversation(
       existingConversation.id
     ),
     {
-      hiddenFor: arrayRemove(customerId),
+      hiddenFor: arrayRemove(customerId, ownerId),
     }
   );
 
