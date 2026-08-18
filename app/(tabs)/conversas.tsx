@@ -8,9 +8,7 @@ import { router, Stack } from "expo-router";
 import {
   collection,
   doc,
-  onSnapshot,
-  query,
-  where,
+  onSnapshot
 } from "firebase/firestore";
 
 import { useEffect, useState } from "react";
@@ -50,74 +48,82 @@ export default function ConversationsScreen() {
   >
 >({});
 
-  useEffect(() => {
-    if (!user?.id) {
-      setConversations([]);
+ useEffect(() => {
+  if (!user?.id) {
+    setConversations([]);
+    setIsLoading(false);
+    return;
+  }
+
+  const currentUserId = String(user.id);
+
+  const unsubscribe = onSnapshot(
+    collection(db, "conversations"),
+    (snapshot) => {
+      const loadedConversations =
+        snapshot.docs.map((document) => ({
+          id: document.id,
+          ...(document.data() as Omit<
+            Conversation,
+            "id"
+          >),
+        }));
+
+      const myConversations =
+        loadedConversations.filter((conversation) => {
+          const participantIds = Array.isArray(
+            conversation.participantIds
+          )
+            ? conversation.participantIds
+            : [];
+
+          return (
+            participantIds.includes(currentUserId) ||
+            conversation.customerId === currentUserId ||
+            conversation.ownerId === currentUserId
+          );
+        });
+
+      const visibleConversations =
+        myConversations.filter((conversation) => {
+          const isHidden =
+            conversation.hiddenFor?.includes(
+              currentUserId
+            );
+
+          const unreadCount =
+            conversation.unreadCounts?.[
+              currentUserId
+            ] ?? 0;
+
+          return !isHidden || unreadCount > 0;
+        });
+
+      visibleConversations.sort((a, b) => {
+        const timeA =
+          a.lastMessageAt?.toMillis?.() ?? 0;
+
+        const timeB =
+          b.lastMessageAt?.toMillis?.() ?? 0;
+
+        return timeB - timeA;
+      });
+
+      setConversations(visibleConversations);
       setIsLoading(false);
-      return;
+    },
+    (error) => {
+      console.log(
+        "Erro ao carregar conversas:",
+        error
+      );
+
+      setIsLoading(false);
     }
-
-    const conversationsQuery = query(
-      collection(db, "conversations"),
-      where(
-        "participantIds",
-        "array-contains",
-        user.id
-      )
-    );
-
-    const unsubscribe = onSnapshot(
-      conversationsQuery,
-      (snapshot) => {
-       const loadedConversations =
-  snapshot.docs.map((document) => ({
-    id: document.id,
-    ...(document.data() as Omit<
-      Conversation,
-      "id"
-    >),
-  }));
-
-const visibleConversations =
-  loadedConversations.filter(
-    (conversation) =>
-      !conversation.hiddenFor?.includes(
-        user.id
-      )
   );
 
-visibleConversations.sort((a, b) => {
-  const timeA =
-    a.lastMessageAt?.toMillis?.() ?? 0;
-
-  const timeB =
-    b.lastMessageAt?.toMillis?.() ?? 0;
-
-  return timeB - timeA;
-});
-
-setConversations(
-  visibleConversations
-);
-
-setIsLoading(false);
-
-        
-
-        setIsLoading(false);
-      },
-      (error) => {
-        console.log(
-          "Erro ao carregar conversas:",
-          error
-        );
-
-        setIsLoading(false);
-      }
-    );
-
-    return unsubscribe;
-  }, [user?.id]);
+  return unsubscribe;
+}, [user?.id]);
 
   useEffect(() => {
   if (!user?.id || conversations.length === 0) {

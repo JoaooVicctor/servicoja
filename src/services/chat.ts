@@ -485,6 +485,9 @@ if (type === "location") {
     createdMessageReference.id,
   lastMessageAt:
     serverTimestamp(),
+  hiddenFor: recipientId
+    ? arrayRemove(senderId, recipientId)
+    : arrayRemove(senderId),
 };
 
 if (
@@ -506,15 +509,15 @@ if (
   !recipientIsInsideThisConversation &&
   recipientPushTokens.length > 0
 ) {
-  await sendPushNotifications({
-    tokens: recipientPushTokens,
-    title: senderName,
-    body: lastMessage || "Nova mensagem",
-    data: {
-      type: "chat",
-      conversationId,
-    },
-  });
+await sendPushNotifications({
+  tokens: recipientPushTokens,
+  title: `Nova mensagem de ${senderName}`,
+  body: lastMessage || "Toque para abrir a conversa",
+  data: {
+    type: "chat",
+    conversationId,
+  },
+});
 }
 }
 
@@ -663,6 +666,13 @@ export async function markMessagesAsDelivered(
   if (!conversationId || !userId) {
     return;
   }
+
+  await updateDoc(
+    doc(db, "conversations", conversationId),
+    {
+      hiddenFor: arrayRemove(userId),
+    }
+  ).catch(() => {});
 
   const messagesReference = collection(
     db,
