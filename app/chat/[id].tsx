@@ -2036,7 +2036,7 @@ ListFooterComponent={
   <View
     style={{
       height: keyboardVisible
-        ? keyboardHeight + stickyBarHeight + 20
+        ? keyboardHeight + stickyBarHeight + 0
         : 8,
     }}
   />
