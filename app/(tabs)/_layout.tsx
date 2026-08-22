@@ -4,7 +4,8 @@ import { Tabs } from "expo-router";
 
 export default function TabLayout() {
   const unreadConversationsCount =
-  useUnreadConversationsCount();
+    useUnreadConversationsCount();
+
   return (
     <Tabs
       screenOptions={{
@@ -31,18 +32,6 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Início",
-          tabBarBadge:
-            unreadConversationsCount > 0
-              ? unreadConversationsCount > 99
-                ? "99+"
-                : unreadConversationsCount
-              : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: "#20D45A",
-            color: "#FFFFFF",
-            fontSize: 11,
-            fontWeight: "800",
-          },
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="home-outline"
@@ -67,10 +56,22 @@ export default function TabLayout() {
         }}
       />
 
-     <Tabs.Screen
+      <Tabs.Screen
         name="conversas"
         options={{
           title: "Conversas",
+          tabBarBadge:
+            unreadConversationsCount > 0
+              ? unreadConversationsCount > 99
+                ? "99+"
+                : unreadConversationsCount
+              : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: "#20D45A",
+            color: "#FFFFFF",
+            fontSize: 11,
+            fontWeight: "800",
+          },
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="chatbubble-ellipses-outline"
@@ -79,7 +80,7 @@ export default function TabLayout() {
             />
           ),
         }}
-      />'
+      />
 
       <Tabs.Screen
         name="publicar"

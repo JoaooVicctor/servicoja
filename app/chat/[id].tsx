@@ -727,8 +727,6 @@ useEffect(() => {
 
 useEffect(() => {
   const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
-    const wasNearBottom = isNearBottomRef.current;
-
     LayoutAnimation.configureNext(
       LayoutAnimation.create(
         250,
@@ -739,10 +737,6 @@ useEffect(() => {
 
     setKeyboardVisible(true);
     setKeyboardHeight(e.endCoordinates.height);
-
-    if (wasNearBottom) {
-      setTimeout(scrollToEndAfterKeyboard, 80);
-    }
   });
 
   const hideSub = Keyboard.addListener("keyboardDidHide", () => {
@@ -763,6 +757,14 @@ useEffect(() => {
     hideSub.remove();
   };
 }, []);
+
+useEffect(() => {
+  if (!isNearBottomRef.current) {
+    return;
+  }
+
+  scrollToEndAfterKeyboard();
+}, [keyboardHeight, stickyBarHeight]);
 
 
   useEffect(() => {
@@ -2036,7 +2038,9 @@ ListFooterComponent={
   <View
     style={{
       height: keyboardVisible
-        ? keyboardHeight + stickyBarHeight + 0
+        ? Platform.OS === "ios"
+          ? keyboardHeight + stickyBarHeight
+          : stickyBarHeight
         : 8,
     }}
   />
