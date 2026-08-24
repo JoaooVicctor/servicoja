@@ -3,9 +3,16 @@ import { LocationPickerProvider } from "@/src/contexts/LocationPickerContext";
 import { ServiceProvider } from "@/src/contexts/ServiceContext";
 import { UserProvider, useUser } from "@/src/contexts/UserContext";
 import { registerForPushNotifications } from "@/src/services/notifications";
+
+import * as NavigationBar from "expo-navigation-bar";
 import * as Notifications from "expo-notifications";
+
+import { router, Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+
 import Toast from "react-native-toast-message";
 
 import {
@@ -14,92 +21,110 @@ import {
   updatePendingMessages,
 } from "@/src/services/presence";
 
-import { router, Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
 import { useEffect } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 
 function AppContent() {
   const { user } = useUser();
 
   useEffect(() => {
-  if (!user?.id) {
-    return;
-  }
+    if (Platform.OS !== "android") return;
 
-  registerForPushNotifications(user.id).catch(
-    (error) => {
-      console.log(
-        "Erro ao registrar push token:",
-        error
-      );
+    async function configureNavigationBar() {
+      try {
+        await NavigationBar.setPositionAsync("relative");
+        await NavigationBar.setBackgroundColorAsync("#000000");
+        await NavigationBar.setButtonStyleAsync("light");
+        await NavigationBar.setBorderColorAsync("#000000");
+      } catch (error) {
+        console.log(
+          "Erro ao configurar barra de navegação:",
+          error
+        );
+      }
     }
-  );
-}, [user?.id]);
 
-useEffect(() => {
-  const subscription =
-    Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const conversationId =
-          response.notification.request.content
-            .data?.conversationId;
+    configureNavigationBar();
+  }, []);
 
-        if (
-          typeof conversationId === "string" &&
-          conversationId.length > 0
-        ) {
-          router.push({
-            pathname: "/chat/[id]",
-            params: {
-              id: conversationId,
-            },
-          });
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    registerForPushNotifications(user.id).catch(
+      (error) => {
+        console.log(
+          "Erro ao registrar push token:",
+          error
+        );
+      }
+    );
+  }, [user?.id]);
+
+  useEffect(() => {
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(
+        (response) => {
+          const conversationId =
+            response.notification.request.content
+              .data?.conversationId;
+
+          if (
+            typeof conversationId === "string" &&
+            conversationId.length > 0
+          ) {
+            router.push({
+              pathname: "/chat/[id]",
+              params: {
+                id: conversationId,
+              },
+            });
+          }
+        }
+      );
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    async function initializePresence() {
+      if (!user) return;
+
+      await setUserOnline(user.id);
+      await updatePendingMessages(user.id);
+    }
+
+    initializePresence();
+
+    const subscription = AppState.addEventListener(
+      "change",
+      async (state) => {
+        if (!user) return;
+
+        if (state === "active") {
+          await setUserOnline(user.id);
+          await updatePendingMessages(user.id);
+        } else {
+          await setUserOffline(user.id);
         }
       }
     );
 
-  return () => {
-    subscription.remove();
-  };
-}, []);
-
-  useEffect(() => {
-  if (!user?.id) return;
-
-  async function initializePresence() {
-    if (!user) return;
-
-    await setUserOnline(user.id);
-    await updatePendingMessages(user.id);
-  }
-
-  initializePresence();
-
-  const subscription = AppState.addEventListener(
-    "change",
-    async (state) => {
-      if (!user) return;
-
-      if (state === "active") {
-        await setUserOnline(user.id);
-        await updatePendingMessages(user.id);
-      } else {
-        await setUserOffline(user.id);
+    return () => {
+      if (user) {
+        setUserOffline(user.id);
       }
-    }
-  );
 
-  return () => {
-    if (user) {
-      setUserOffline(user.id);
-    }
-
-    subscription.remove();
-  };
-}, [user]);
+      subscription.remove();
+    };
+  }, [user]);
 
   return (
     <>
@@ -111,6 +136,7 @@ useEffect(() => {
       </Stack>
 
       <StatusBar style="auto" />
+
       <Toast />
     </>
   );
@@ -118,18 +144,18 @@ useEffect(() => {
 
 export default function RootLayout() {
   return (
-   <GestureHandlerRootView style={{ flex: 1 }}>
-  <KeyboardProvider>
-    <LocationPickerProvider>
-      <UserProvider>
-        <ServiceProvider>
-          <FavoritesProvider>
-            <AppContent />
-          </FavoritesProvider>
-        </ServiceProvider>
-      </UserProvider>
-    </LocationPickerProvider>
-  </KeyboardProvider>
-</GestureHandlerRootView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
+        <LocationPickerProvider>
+          <UserProvider>
+            <ServiceProvider>
+              <FavoritesProvider>
+                <AppContent />
+              </FavoritesProvider>
+            </ServiceProvider>
+          </UserProvider>
+        </LocationPickerProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }
