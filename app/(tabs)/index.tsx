@@ -24,6 +24,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -90,17 +91,91 @@ export default function Home() {
   const [carouselIndex, setCarouselIndex] =
     useState(1);
 
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [servicesOrder, setServicesOrder] =
+    useState<string[]>([]);
+
   const carouselRef = useRef<ScrollView>(null);
 
   const { user } = useUser();
   const { services } = useServices();
+
+  function shuffleServices() {
+    const shuffledIds = [...services]
+      .sort(() => Math.random() - 0.5)
+      .map((service) => service.id);
+
+    setServicesOrder(shuffledIds);
+  }
+
+  useEffect(() => {
+    if (services.length === 0) {
+      setServicesOrder([]);
+      return;
+    }
+
+    shuffleServices();
+  }, [services.length]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+
+    shuffleServices();
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 700)
+    );
+
+    setRefreshing(false);
+  }
+
+  const orderedServices = useMemo(() => {
+    if (servicesOrder.length === 0) {
+      return services;
+    }
+
+    const servicesMap = new Map(
+      services.map((service) => [
+        service.id,
+        service,
+      ])
+    );
+
+    const ordered = servicesOrder.reduce<
+      typeof services
+    >((result, id) => {
+      const service = servicesMap.get(id);
+
+      if (service) {
+        result.push(service);
+      }
+
+      return result;
+    }, []);
+
+    const orderedIds = new Set(
+      ordered.map((service) => service.id)
+    );
+
+    const newServices = services.filter(
+      (service) =>
+        !orderedIds.has(service.id)
+    );
+
+    return [
+      ...ordered,
+      ...newServices,
+    ];
+  }, [services, servicesOrder]);
 
   const filteredServices = useMemo(() => {
     const normalizedSearch = search
       .trim()
       .toLowerCase();
 
-    return services.filter((service) => {
+    return orderedServices.filter((service) => {
       const matchesSearch =
         !normalizedSearch ||
         service.title
@@ -126,21 +201,27 @@ export default function Home() {
         !selectedCategory ||
         service.category === selectedCategory;
 
-      return matchesSearch && matchesCategory;
+      return (
+        matchesSearch &&
+        matchesCategory
+      );
     });
   }, [
     search,
     selectedCategory,
-    services,
+    orderedServices,
   ]);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setCarouselIndex((currentIndex) => {
-        const nextIndex = currentIndex + 1;
+        const nextIndex =
+          currentIndex + 1;
 
         carouselRef.current?.scrollTo({
-          x: nextIndex * CAROUSEL_WIDTH,
+          x:
+            nextIndex *
+            CAROUSEL_WIDTH,
           animated: true,
         });
 
@@ -148,7 +229,8 @@ export default function Home() {
       });
     }, 4000);
 
-    return () => clearInterval(interval);
+    return () =>
+      clearInterval(interval);
   }, []);
 
   function handleCarouselMomentumEnd(
@@ -215,8 +297,6 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
-      {/* NAV FIXO */}
-
       <View style={styles.fixedHeader}>
         <View style={styles.header}>
           {user ? (
@@ -224,7 +304,9 @@ export default function Home() {
               <Pressable
                 style={styles.userInfo}
                 onPress={() =>
-                  router.push("/(tabs)/perfil")
+                  router.push(
+                    "/(tabs)/perfil"
+                  )
                 }
               >
                 {user.photoURL ? (
@@ -255,8 +337,9 @@ export default function Home() {
                 <Text style={styles.greeting}>
                   Olá,{" "}
                   <Text style={styles.userName}>
-                    {user.name?.split(" ")[0] ||
-                      "usuário"}
+                    {user.name?.split(
+                      " "
+                    )[0] || "usuário"}
                   </Text>
                 </Text>
               </Pressable>
@@ -264,7 +347,9 @@ export default function Home() {
               <Pressable
                 style={styles.menuButton}
                 onPress={() =>
-                  router.push("/(tabs)/perfil")
+                  router.push(
+                    "/(tabs)/perfil"
+                  )
                 }
               >
                 <Ionicons
@@ -283,7 +368,9 @@ export default function Home() {
               <Pressable
                 style={styles.loginButton}
                 onPress={() =>
-                  router.push("/(auth)/login")
+                  router.push(
+                    "/(auth)/login"
+                  )
                 }
               >
                 <Text
@@ -298,8 +385,6 @@ export default function Home() {
           )}
         </View>
 
-        {/* PESQUISA FIXA */}
-
         <View style={styles.searchSection}>
           <SearchInput
             value={search}
@@ -308,22 +393,30 @@ export default function Home() {
         </View>
       </View>
 
-      {/* CONTEÚDO QUE ROLA */}
-
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={
+          styles.content
+        }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={["#1677FF"]}
+            tintColor="#1677FF"
+          />
+        }
       >
-        {/* CARROSSEL */}
-
         <View style={styles.carouselSection}>
           <ScrollView
             ref={carouselRef}
             horizontal
             pagingEnabled
-            showsHorizontalScrollIndicator={false}
+            showsHorizontalScrollIndicator={
+              false
+            }
             onMomentumScrollEnd={
               handleCarouselMomentumEnd
             }
@@ -336,7 +429,9 @@ export default function Home() {
               (item, index) => (
                 <View
                   key={`${item.id}-${index}`}
-                  style={styles.carouselPage}
+                  style={
+                    styles.carouselPage
+                  }
                 >
                   <View
                     style={
@@ -391,7 +486,9 @@ export default function Home() {
           </ScrollView>
 
           <View
-            style={styles.dotsContainer}
+            style={
+              styles.dotsContainer
+            }
           >
             {carouselItems.map(
               (_, index) => {
@@ -408,7 +505,8 @@ export default function Home() {
                     key={index}
                     style={[
                       styles.dot,
-                      activeIndex === index &&
+                      activeIndex ===
+                        index &&
                         styles.activeDot,
                     ]}
                   />
@@ -418,61 +516,71 @@ export default function Home() {
           </View>
         </View>
 
-        {/* CATEGORIAS */}
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.sectionHeader}
+        >
+          <Text
+            style={styles.sectionTitle}
+          >
             Categorias
           </Text>
         </View>
 
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={false}
+          showsHorizontalScrollIndicator={
+            false
+          }
           contentContainerStyle={
             styles.categoriesContainer
           }
         >
-          {categories.map((category) => {
-            const isSelected =
-              selectedCategory ===
-              category.name;
+          {categories.map(
+            (category) => {
+              const isSelected =
+                selectedCategory ===
+                category.name;
 
-            return (
-              <View
-                key={category.id}
-                style={[
-                  styles.categoryWrapper,
-                  isSelected &&
-                    styles.selectedCategory,
-                ]}
-              >
-                <CategoryCard
-                  name={category.name}
-                  icon={category.icon}
-                  onPress={() => {
-                    setSelectedCategory(
-                      isSelected
-                        ? null
-                        : category.name
-                    );
-                  }}
-                />
-              </View>
-            );
-          })}
+              return (
+                <View
+                  key={category.id}
+                  style={[
+                    styles.categoryWrapper,
+                    isSelected &&
+                      styles.selectedCategory,
+                  ]}
+                >
+                  <CategoryCard
+                    name={category.name}
+                    icon={category.icon}
+                    onPress={() => {
+                      setSelectedCategory(
+                        isSelected
+                          ? null
+                          : category.name
+                      );
+                    }}
+                  />
+                </View>
+              );
+            }
+          )}
         </ScrollView>
 
-        {/* SERVIÇOS */}
-
-        <View style={styles.servicesHeader}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.servicesHeader}
+        >
+          <Text
+            style={styles.sectionTitle}
+          >
             Serviços disponíveis
           </Text>
         </View>
 
         {filteredServices.length > 0 ? (
-          <View style={styles.servicesGrid}>
+          <View
+            style={styles.servicesGrid}
+          >
             {filteredServices.map(
               (service) => (
                 <ServiceCard
@@ -484,9 +592,13 @@ export default function Home() {
           </View>
         ) : (
           <View
-            style={styles.emptyContainer}
+            style={
+              styles.emptyContainer
+            }
           >
-            <Text style={styles.emptyIcon}>
+            <Text
+              style={styles.emptyIcon}
+            >
               🔎
             </Text>
 
@@ -517,16 +629,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
- fixedHeader: {
-  backgroundColor: colors.background,
-  paddingTop: 18,
-  borderTopWidth: 1,
-  borderTopColor: "#E7E7E7",
-  borderBottomWidth: 1,
-  borderBottomColor: "#E7E7E7",
-  zIndex: 10,
-  elevation: 4,
-},
+  fixedHeader: {
+    backgroundColor: colors.background,
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: "#E7E7E7",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E7E7E7",
+    zIndex: 10,
+    elevation: 4,
+  },
 
   header: {
     height: 82,
