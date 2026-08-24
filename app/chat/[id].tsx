@@ -79,6 +79,7 @@ if (
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
+import Constants from "expo-constants";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -2038,7 +2039,8 @@ ListFooterComponent={
   <View
     style={{
       height: keyboardVisible
-        ? Platform.OS === "ios"
+        ? Platform.OS === "ios" ||
+          Constants.appOwnership === "expo"
           ? keyboardHeight + stickyBarHeight
           : stickyBarHeight
         : 8,

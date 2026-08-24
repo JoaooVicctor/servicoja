@@ -40,11 +40,11 @@ export function ServiceCard({
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.container,
-        pressed && styles.pressed,
-      ]}
+      style={styles.container}
       onPress={handleOpenService}
+      android_ripple={{
+        color: "transparent",
+      }}
     >
       <View style={styles.imageContainer}>
         <Image
@@ -55,10 +55,7 @@ export function ServiceCard({
         />
 
         <Pressable
-          style={({ pressed }) => [
-            styles.favoriteButton,
-            pressed && styles.favoritePressed,
-          ]}
+          style={styles.favoriteButton}
           onPress={(event) => {
             event.stopPropagation();
             handleToggleFavorite();
@@ -86,7 +83,7 @@ export function ServiceCard({
           style={styles.price}
           numberOfLines={1}
         >
-          {service.price}
+          R$ {service.price}
         </Text>
 
         <Text
@@ -95,21 +92,6 @@ export function ServiceCard({
         >
           {service.title}
         </Text>
-
-        <View style={styles.categoryContainer}>
-          <Ionicons
-            name="pricetag-outline"
-            size={13}
-            color="#666666"
-          />
-
-          <Text
-            style={styles.category}
-            numberOfLines={1}
-          >
-            {service.category}
-          </Text>
-        </View>
 
         <View style={styles.locationContainer}>
           <Ionicons
@@ -122,17 +104,9 @@ export function ServiceCard({
             style={styles.location}
             numberOfLines={1}
           >
-            {service.city} -{" "}
-            {service.neighborhood}
+            {service.neighborhood} - {service.city}
           </Text>
         </View>
-
-        <Text
-          style={styles.userName}
-          numberOfLines={1}
-        >
-          Por {service.userName}
-        </Text>
       </View>
     </Pressable>
   );
@@ -140,41 +114,23 @@ export function ServiceCard({
 
 const styles = StyleSheet.create({
   container: {
-    width: "48.5%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    overflow: "hidden",
-
-    borderWidth: 1,
-    borderColor: "#E7E7E7",
-
-    elevation: 2,
-
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.07,
-    shadowRadius: 5,
-  },
-
-  pressed: {
-    opacity: 0.78,
-    transform: [
-      {
-        scale: 0.98,
-      },
-    ],
-  },
+  width: "50%",
+  backgroundColor: "#FFFFFF",
+  borderRadius: 14,
+  overflow: "hidden",
+  borderWidth: 1,
+  borderColor: "#E7E7E7",
+},
 
   imageContainer: {
     position: "relative",
+    width: "100%",
+    aspectRatio: 1,
   },
 
   image: {
     width: "100%",
-    height: 145,
+    height: "100%",
     backgroundColor: "#E8E8E8",
   },
 
@@ -182,18 +138,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 9,
     right: 9,
-
     width: 38,
     height: 38,
     borderRadius: 19,
-
     backgroundColor: "rgba(255,255,255,0.92)",
-
     alignItems: "center",
     justifyContent: "center",
-
     elevation: 3,
-
     shadowColor: "#000000",
     shadowOffset: {
       width: 0,
@@ -201,15 +152,6 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.15,
     shadowRadius: 4,
-  },
-
-  favoritePressed: {
-    opacity: 0.7,
-    transform: [
-      {
-        scale: 0.9,
-      },
-    ],
   },
 
   information: {
@@ -224,42 +166,22 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    minHeight: 39,
     fontSize: 15,
     fontWeight: "700",
     color: "#202020",
     lineHeight: 19,
-  },
-
-  categoryContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 8,
-  },
-
-  category: {
-    flex: 1,
-    fontSize: 12,
-    color: "#666666",
+    marginBottom: 8,
   },
 
   locationContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    marginTop: 6,
   },
 
   location: {
     flex: 1,
     fontSize: 12,
     color: "#777777",
-  },
-
-  userName: {
-    fontSize: 12,
-    color: "#929292",
-    marginTop: 7,
   },
 });

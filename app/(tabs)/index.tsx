@@ -1,19 +1,83 @@
 import { CategoryCard } from "@/src/components/CategoryCard";
 import { SearchInput } from "@/src/components/SearchInput";
 import { ServiceCard } from "@/src/components/ServiceCard";
+
 import { useServices } from "@/src/contexts/ServiceContext";
 import { useUser } from "@/src/contexts/UserContext";
+
 import { categories } from "@/src/data/categories";
 import { colors } from "@/src/theme/colors";
 
-import { useMemo, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import {
+  Dimensions,
+  Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
+const { width } = Dimensions.get("window");
+
+const CAROUSEL_GAP = 14;
+const CAROUSEL_WIDTH = width;
+
+const carouselItems = [
+  {
+    id: "1",
+    title: "Anuncie aqui",
+    description:
+      "Divulgue sua empresa e alcance mais clientes no ServiçoJá.",
+    button: "Quero anunciar",
+  },
+  {
+    id: "2",
+    title: "Anuncie aqui",
+    description:
+      "Mostre sua empresa para pessoas que estão procurando serviços.",
+    button: "Quero anunciar",
+  },
+  {
+    id: "3",
+    title: "Anuncie aqui",
+    description:
+      "Destaque sua marca e conquiste novos clientes.",
+    button: "Quero anunciar",
+  },
+  {
+    id: "4",
+    title: "Anuncie aqui",
+    description:
+      "Seu negócio pode aparecer em destaque para nossos usuários.",
+    button: "Quero anunciar",
+  },
+  {
+    id: "5",
+    title: "Anuncie aqui",
+    description:
+      "Divulgue sua empresa no ServiçoJá.",
+    button: "Quero anunciar",
+  },
+];
+
+const infiniteCarouselItems = [
+  carouselItems[carouselItems.length - 1],
+  ...carouselItems,
+  carouselItems[0],
+];
 
 export default function Home() {
   const [search, setSearch] = useState("");
@@ -22,6 +86,11 @@ export default function Home() {
     selectedCategory,
     setSelectedCategory,
   ] = useState<string | null>(null);
+
+  const [carouselIndex, setCarouselIndex] =
+    useState(1);
+
+  const carouselRef = useRef<ScrollView>(null);
 
   const { user } = useUser();
   const { services } = useServices();
@@ -65,106 +134,380 @@ export default function Home() {
     services,
   ]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCarouselIndex((currentIndex) => {
+        const nextIndex = currentIndex + 1;
+
+        carouselRef.current?.scrollTo({
+          x: nextIndex * CAROUSEL_WIDTH,
+          animated: true,
+        });
+
+        return nextIndex;
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  function handleCarouselMomentumEnd(
+    event: NativeSyntheticEvent<NativeScrollEvent>
+  ) {
+    const offsetX =
+      event.nativeEvent.contentOffset.x;
+
+    const index = Math.round(
+      offsetX / CAROUSEL_WIDTH
+    );
+
+    if (index === 0) {
+      setCarouselIndex(
+        carouselItems.length
+      );
+
+      requestAnimationFrame(() => {
+        carouselRef.current?.scrollTo({
+          x:
+            carouselItems.length *
+            CAROUSEL_WIDTH,
+          animated: false,
+        });
+      });
+
+      return;
+    }
+
+    if (
+      index ===
+      infiniteCarouselItems.length - 1
+    ) {
+      setCarouselIndex(1);
+
+      requestAnimationFrame(() => {
+        carouselRef.current?.scrollTo({
+          x: CAROUSEL_WIDTH,
+          animated: false,
+        });
+      });
+
+      return;
+    }
+
+    setCarouselIndex(index);
+  }
+
+  useEffect(() => {
+    if (
+      carouselIndex >
+      carouselItems.length
+    ) {
+      setCarouselIndex(1);
+
+      requestAnimationFrame(() => {
+        carouselRef.current?.scrollTo({
+          x: CAROUSEL_WIDTH,
+          animated: false,
+        });
+      });
+    }
+  }, [carouselIndex]);
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.title}>
-        👋 Olá,{" "}
-        {user?.name || "seja bem-vindo"}
-      </Text>
+    <View style={styles.container}>
+      {/* NAV FIXO */}
 
-      <Text style={styles.subtitle}>
-        Encontre o serviço ideal para o que você
-        precisa.
-      </Text>
+      <View style={styles.fixedHeader}>
+        <View style={styles.header}>
+          {user ? (
+            <>
+              <Pressable
+                style={styles.userInfo}
+                onPress={() =>
+                  router.push("/(tabs)/perfil")
+                }
+              >
+                {user.photoURL ? (
+                  <Image
+                    source={{
+                      uri: user.photoURL,
+                    }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <View
+                    style={
+                      styles.avatarPlaceholder
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.avatarPlaceholderText
+                      }
+                    >
+                      {user.name
+                        ?.charAt(0)
+                        .toUpperCase() || "U"}
+                    </Text>
+                  </View>
+                )}
 
-      <SearchInput
-        value={search}
-        onChangeText={setSearch}
-      />
+                <Text style={styles.greeting}>
+                  Olá,{" "}
+                  <Text style={styles.userName}>
+                    {user.name?.split(" ")[0] ||
+                      "usuário"}
+                  </Text>
+                </Text>
+              </Pressable>
 
-      <Text style={styles.sectionTitle}>
-        Categorias
-      </Text>
+              <Pressable
+                style={styles.menuButton}
+                onPress={() =>
+                  router.push("/(tabs)/perfil")
+                }
+              >
+                <Ionicons
+                  name="menu-outline"
+                  size={28}
+                  color={colors.black}
+                />
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.greeting}>
+                ServiçoJá
+              </Text>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={
-          styles.categoriesContainer
-        }
-      >
-        {categories.map((category) => {
-          const isSelected =
-            selectedCategory === category.name;
+              <Pressable
+                style={styles.loginButton}
+                onPress={() =>
+                  router.push("/(auth)/login")
+                }
+              >
+                <Text
+                  style={
+                    styles.loginButtonText
+                  }
+                >
+                  Entrar
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </View>
 
-          return (
-            <View
-              key={category.id}
-              style={[
-                styles.categoryWrapper,
-                isSelected &&
-                  styles.selectedCategory,
-              ]}
-            >
-              <CategoryCard
-                name={category.name}
-                icon={category.icon}
-                onPress={() => {
-                  setSelectedCategory(
-                    isSelected
-                      ? null
-                      : category.name
-                  );
-                }}
-              />
-            </View>
-          );
-        })}
-      </ScrollView>
+        {/* PESQUISA FIXA */}
 
-      <View style={styles.servicesHeader}>
-        <Text style={styles.sectionTitle}>
-          Serviços disponíveis
-        </Text>
-
-        <View style={styles.countContainer}>
-          <Text style={styles.servicesCount}>
-            {filteredServices.length}
-          </Text>
+        <View style={styles.searchSection}>
+          <SearchInput
+            value={search}
+            onChangeText={setSearch}
+          />
         </View>
       </View>
 
-      {filteredServices.length > 0 ? (
-        <View style={styles.servicesGrid}>
-          {filteredServices.map((service) => (
-            <ServiceCard
-              key={service.id}
-              service={service}
-            />
-          ))}
-        </View>
-      ) : (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>
-            🔎
-          </Text>
+      {/* CONTEÚDO QUE ROLA */}
 
-          <Text style={styles.emptyTitle}>
-            Nenhum serviço encontrado
-          </Text>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* CARROSSEL */}
 
-          <Text style={styles.emptyDescription}>
-            Publique um serviço ou tente pesquisar
-            por outro termo.
+        <View style={styles.carouselSection}>
+          <ScrollView
+            ref={carouselRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={
+              handleCarouselMomentumEnd
+            }
+            contentOffset={{
+              x: CAROUSEL_WIDTH,
+              y: 0,
+            }}
+          >
+            {infiniteCarouselItems.map(
+              (item, index) => (
+                <View
+                  key={`${item.id}-${index}`}
+                  style={styles.carouselPage}
+                >
+                  <View
+                    style={
+                      styles.carouselCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.carouselDecoration
+                      }
+                    />
+
+                    <View
+                      style={
+                        styles.carouselTextContent
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.carouselTitle
+                        }
+                      >
+                        {item.title}
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.carouselDescription
+                        }
+                      >
+                        {item.description}
+                      </Text>
+
+                      <Pressable
+                        style={
+                          styles.carouselButton
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.carouselButtonText
+                          }
+                        >
+                          {item.button}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              )
+            )}
+          </ScrollView>
+
+          <View
+            style={styles.dotsContainer}
+          >
+            {carouselItems.map(
+              (_, index) => {
+                const activeIndex =
+                  carouselIndex === 0
+                    ? carouselItems.length - 1
+                    : carouselIndex ===
+                      carouselItems.length + 1
+                    ? 0
+                    : carouselIndex - 1;
+
+                return (
+                  <View
+                    key={index}
+                    style={[
+                      styles.dot,
+                      activeIndex === index &&
+                        styles.activeDot,
+                    ]}
+                  />
+                );
+              }
+            )}
+          </View>
+        </View>
+
+        {/* CATEGORIAS */}
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>
+            Categorias
           </Text>
         </View>
-      )}
-    </ScrollView>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={
+            styles.categoriesContainer
+          }
+        >
+          {categories.map((category) => {
+            const isSelected =
+              selectedCategory ===
+              category.name;
+
+            return (
+              <View
+                key={category.id}
+                style={[
+                  styles.categoryWrapper,
+                  isSelected &&
+                    styles.selectedCategory,
+                ]}
+              >
+                <CategoryCard
+                  name={category.name}
+                  icon={category.icon}
+                  onPress={() => {
+                    setSelectedCategory(
+                      isSelected
+                        ? null
+                        : category.name
+                    );
+                  }}
+                />
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        {/* SERVIÇOS */}
+
+        <View style={styles.servicesHeader}>
+          <Text style={styles.sectionTitle}>
+            Serviços disponíveis
+          </Text>
+        </View>
+
+        {filteredServices.length > 0 ? (
+          <View style={styles.servicesGrid}>
+            {filteredServices.map(
+              (service) => (
+                <ServiceCard
+                  key={service.id}
+                  service={service}
+                />
+              )
+            )}
+          </View>
+        ) : (
+          <View
+            style={styles.emptyContainer}
+          >
+            <Text style={styles.emptyIcon}>
+              🔎
+            </Text>
+
+            <Text
+              style={styles.emptyTitle}
+            >
+              Nenhum serviço encontrado
+            </Text>
+
+            <Text
+              style={
+                styles.emptyDescription
+              }
+            >
+              Publique um serviço ou tente
+              pesquisar por outro termo.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -174,36 +517,209 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
-  content: {
+ fixedHeader: {
+  backgroundColor: colors.background,
+  paddingTop: 18,
+  borderTopWidth: 1,
+  borderTopColor: "#E7E7E7",
+  borderBottomWidth: 1,
+  borderBottomColor: "#E7E7E7",
+  zIndex: 10,
+  elevation: 4,
+},
+
+  header: {
+    height: 82,
     paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 120,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
-  title: {
-    fontSize: 29,
+  userInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+  },
+
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: "#1677FF",
+  },
+
+  avatarPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#1677FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  avatarPlaceholderText: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+
+  greeting: {
+    fontSize: 22,
     fontWeight: "800",
     color: colors.black,
   },
 
-  subtitle: {
-    fontSize: 16,
-    color: colors.gray600,
-    marginTop: 8,
-    marginBottom: 24,
-    lineHeight: 22,
+  userName: {
+    color: "#1677FF",
+  },
+
+  menuButton: {
+    width: 45,
+    height: 45,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  loginButton: {
+    backgroundColor: "#1677FF",
+    paddingHorizontal: 20,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  loginButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
+  searchSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 2,
+  },
+
+  scrollView: {
+    flex: 1,
+  },
+
+  content: {
+    paddingTop: 18,
+    paddingBottom: 120,
+  },
+
+  carouselSection: {
+    marginTop: 0,
+  },
+
+  carouselPage: {
+    width: CAROUSEL_WIDTH,
+  },
+
+  carouselCard: {
+    width:
+      CAROUSEL_WIDTH -
+      CAROUSEL_GAP * 2,
+    height: 185,
+    borderRadius: 22,
+    backgroundColor: "#1677FF",
+    overflow: "hidden",
+    position: "relative",
+    marginHorizontal: CAROUSEL_GAP,
+  },
+
+  carouselDecoration: {
+    position: "absolute",
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor:
+      "rgba(255,255,255,0.08)",
+    right: -80,
+    top: -45,
+  },
+
+  carouselTextContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    width: "72%",
+  },
+
+  carouselTitle: {
+    fontSize: 23,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    lineHeight: 29,
+    marginBottom: 10,
+  },
+
+  carouselDescription: {
+    fontSize: 14,
+    color: "#E4EEFF",
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+
+  carouselButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    height: 39,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  carouselButtonText: {
+    color: "#1677FF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  dotsContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+  },
+
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 10,
+    backgroundColor: "#C9D4E4",
+  },
+
+  activeDot: {
+    width: 20,
+    backgroundColor: "#1677FF",
+  },
+
+  sectionHeader: {
+    paddingHorizontal: 16,
+    marginTop: 27,
   },
 
   sectionTitle: {
     fontSize: 21,
-    fontWeight: "700",
+    fontWeight: "800",
     color: colors.black,
-    marginTop: 28,
-    marginBottom: 15,
   },
 
   categoriesContainer: {
+    paddingLeft: 16,
     paddingRight: 20,
+    paddingTop: 16,
     gap: 10,
   },
 
@@ -217,31 +733,17 @@ const styles = StyleSheet.create({
   },
 
   servicesHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  countContainer: {
-    minWidth: 29,
-    height: 29,
-    borderRadius: 15,
-    backgroundColor: "#E8F2FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 14,
-  },
-
-  servicesCount: {
-    color: "#1677FF",
-    fontWeight: "700",
+    paddingHorizontal: 16,
+    marginTop: 30,
+    marginBottom: 16,
   },
 
   servicesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    rowGap: 14,
+    rowGap: 0,
+    columnGap: 0,
   },
 
   emptyContainer: {
