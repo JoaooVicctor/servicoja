@@ -143,10 +143,10 @@ export default function Publicar() {
 );
 
   async function handleSelectImages() {
-    if (images.length >= 5) {
+    if (images.length >= 15) {
       Alert.alert(
         "Limite de fotos",
-        "Você pode adicionar no máximo 5 fotos."
+        "Você pode adicionar no máximo 15 fotos."
       );
 
       return;
@@ -164,7 +164,7 @@ export default function Publicar() {
       return;
     }
 
-    const availableSlots = 5 - images.length;
+    const availableSlots = 15 - images.length;
 
     const result =
       await ImagePicker.launchImageLibraryAsync({
@@ -468,7 +468,7 @@ return;
           </Text>
 
           <Text style={styles.sectionDescription}>
-            Adicione de 1 a 5 fotos. A primeira
+            Adicione de 1 a 15 fotos. A primeira
             será a capa do anúncio.
           </Text>
 
@@ -512,7 +512,7 @@ return;
               </View>
             ))}
 
-            {images.length < 5 && (
+            {images.length < 15 && (
               <Pressable
                 style={styles.addImageButton}
                 onPress={handleSelectImages}
@@ -531,7 +531,7 @@ return;
           </ScrollView>
 
           <Text style={styles.photoCounter}>
-            {images.length}/5 fotos
+            {images.length}/15 fotos
           </Text>
         </View>
 

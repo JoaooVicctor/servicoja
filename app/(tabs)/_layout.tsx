@@ -1,10 +1,13 @@
 import { useUnreadConversationsCount } from "@/src/hooks/useUnreadConversationsCount";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
   const unreadConversationsCount =
     useUnreadConversationsCount();
+
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -15,9 +18,10 @@ export default function TabLayout() {
         tabBarInactiveTintColor: "#777777",
 
         tabBarStyle: {
-          height: 68,
-          paddingTop: 7,
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 6),
+
           backgroundColor: "#FFFFFF",
           borderTopColor: "#E8E8E8",
         },
@@ -60,18 +64,21 @@ export default function TabLayout() {
         name="conversas"
         options={{
           title: "Conversas",
+
           tabBarBadge:
             unreadConversationsCount > 0
               ? unreadConversationsCount > 99
                 ? "99+"
                 : unreadConversationsCount
               : undefined,
+
           tabBarBadgeStyle: {
             backgroundColor: "#20D45A",
             color: "#FFFFFF",
             fontSize: 11,
             fontWeight: "800",
           },
+
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="chatbubble-ellipses-outline"
