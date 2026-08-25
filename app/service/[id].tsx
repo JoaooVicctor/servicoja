@@ -667,16 +667,16 @@ const styles = StyleSheet.create({
   scrollContent: {},
 
   imageContainer: {
-    width: screenWidth,
-    height: screenWidth * 0.78,
-    backgroundColor: "#EEEEEE",
-  },
+  width: screenWidth,
+  height: screenWidth,
+  backgroundColor: "#EEEEEE",
+},
 
-  image: {
-    width: screenWidth,
-    height: screenWidth * 0.78,
-    resizeMode: "cover",
-  },
+image: {
+  width: screenWidth,
+  height: screenWidth,
+  resizeMode: "cover",
+},
 
   backButton: {
     position: "absolute",
