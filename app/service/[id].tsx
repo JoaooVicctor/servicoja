@@ -3,12 +3,10 @@ import { useUser } from "@/src/contexts/UserContext";
 import { startConversation } from "@/src/services/chat";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  router,
   useLocalSearchParams,
+  useRouter,
 } from "expo-router";
-
 import { useRef, useState } from "react";
-
 import {
   Alert,
   Dimensions,
@@ -24,15 +22,13 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const {
-  width: screenWidth,
-  height: screenHeight,
-} = Dimensions.get("window");
+const { width: screenWidth } = Dimensions.get("window");
 
 const attendanceLabels = {
   local: "Atendimento no local",
-  domicilio: "Atendimento em domicílio",
+  domicilio: "Atendimento a domicílio",
   online: "Atendimento online",
 };
 
@@ -41,20 +37,18 @@ export default function ServiceDetails() {
     id: string;
   }>();
 
-  const { services } = useServices();
+  const router = useRouter();
+
+  const { getServiceById } = useServices();
   const { user } = useUser();
 
-  const [isOpeningChat, setIsOpeningChat] =
-  useState(false);
+  // Detecta automaticamente o espaço ocupado
+  // pelos botões ou pela área de gestos do celular
+  const insets = useSafeAreaInsets();
 
-  const imagesListRef =
-    useRef<FlatList<string>>(null);
+  const service = getServiceById(id);
 
-  const fullscreenListRef =
-    useRef<FlatList<string>>(null);
-
-  const [currentImage, setCurrentImage] =
-    useState(0);
+  const [currentImage, setCurrentImage] = useState(0);
 
   const [fullscreenImage, setFullscreenImage] =
     useState(0);
@@ -62,16 +56,20 @@ export default function ServiceDetails() {
   const [showFullscreen, setShowFullscreen] =
     useState(false);
 
-  const service = services.find(
-    (item) => item.id === id
-  );
+  const [isOpeningChat, setIsOpeningChat] =
+    useState(false);
+
+  const imagesListRef =
+    useRef<FlatList<string>>(null);
+
+  const fullscreenListRef =
+    useRef<FlatList<string>>(null);
 
   function handleImageScroll(
     event: NativeSyntheticEvent<NativeScrollEvent>
   ) {
     const index = Math.round(
-      event.nativeEvent.contentOffset.x /
-        screenWidth
+      event.nativeEvent.contentOffset.x / screenWidth
     );
 
     setCurrentImage(index);
@@ -81,17 +79,14 @@ export default function ServiceDetails() {
     event: NativeSyntheticEvent<NativeScrollEvent>
   ) {
     const index = Math.round(
-      event.nativeEvent.contentOffset.x /
-        screenWidth
+      event.nativeEvent.contentOffset.x / screenWidth
     );
 
     setFullscreenImage(index);
   }
 
   function goToImage(index: number) {
-    if (!service) {
-      return;
-    }
+    if (!service) return;
 
     if (
       index < 0 ||
@@ -109,9 +104,7 @@ export default function ServiceDetails() {
   }
 
   function goToFullscreenImage(index: number) {
-    if (!service) {
-      return;
-    }
+    if (!service) return;
 
     if (
       index < 0 ||
@@ -152,76 +145,85 @@ export default function ServiceDetails() {
     }, 100);
   }
 
-  async function handleOpenChat() {
-  if (!service) {
-    return;
-  }
-
-  if (!user) {
-    Alert.alert(
-      "Entre na sua conta",
-      "Você precisa estar conectado para iniciar uma conversa."
-    );
-
-    return;
-  }
-
-  if (service.userId === user.id) {
-    Alert.alert(
-      "Este anúncio é seu",
-      "Você não pode iniciar uma conversa com você mesmo."
-    );
-
-    return;
-  }
-
-  try {
-    setIsOpeningChat(true);
-
-    const conversationId =
-    await startConversation({
-    serviceId: service.id,
-    serviceTitle: service.title,
-    serviceImage: service.images[0] || "",
-
-    customerId: user.id,
-    customerName: user.name,
-    customerPhoto: user.photoURL,
-
-    ownerId: service.userId,
-    ownerName: service.userName,
-    ownerPhoto: service.userPhoto,
-  });
+  function handleViewProfile() {
+    if (!service) return;
 
     router.push({
-      pathname: "/chat/[id]",
+      pathname: "/profile/[id]",
       params: {
-        id: conversationId,
+        id: service.userId,
       },
     });
-  } catch (error) {
-    console.log(
-      "Erro ao abrir conversa:",
-      error
-    );
-
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Não foi possível iniciar a conversa.";
-
-    if (Platform.OS === "web") {
-      window.alert(message);
-    } else {
-      Alert.alert(
-        "Erro ao conversar",
-        message
-      );
-    }
-  } finally {
-    setIsOpeningChat(false);
   }
-}
+
+  async function handleOpenChat() {
+    if (!service) return;
+
+    if (!user) {
+      Alert.alert(
+        "Entre na sua conta",
+        "Você precisa estar conectado para iniciar uma conversa."
+      );
+
+      return;
+    }
+
+    if (service.userId === user.id) {
+      Alert.alert(
+        "Este anúncio é seu",
+        "Você não pode iniciar uma conversa com você mesmo."
+      );
+
+      return;
+    }
+
+    try {
+      setIsOpeningChat(true);
+
+      const conversationId =
+        await startConversation({
+          serviceId: service.id,
+          serviceTitle: service.title,
+          serviceImage: service.images[0] || "",
+
+          customerId: user.id,
+          customerName: user.name,
+          customerPhoto: user.photoURL,
+
+          ownerId: service.userId,
+          ownerName: service.userName,
+          ownerPhoto: service.userPhoto,
+        });
+
+      router.push({
+        pathname: "/chat/[id]",
+        params: {
+          id: conversationId,
+        },
+      });
+    } catch (error) {
+      console.log(
+        "Erro ao abrir conversa:",
+        error
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível iniciar a conversa.";
+
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert(
+          "Erro ao conversar",
+          message
+        );
+      }
+    } finally {
+      setIsOpeningChat(false);
+    }
+  }
 
   if (!service) {
     return (
@@ -242,12 +244,10 @@ export default function ServiceDetails() {
 
         <Pressable
           style={styles.backHomeButton}
-          onPress={() =>
-            router.replace("/(tabs)")
-          }
+          onPress={() => router.back()}
         >
-          <Text style={styles.backHomeText}>
-            Voltar para a Home
+          <Text style={styles.backHomeButtonText}>
+            Voltar
           </Text>
         </Pressable>
       </View>
@@ -258,11 +258,16 @@ export default function ServiceDetails() {
     <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={
-          styles.scrollContent
-        }
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingBottom:
+              90 +
+              Math.max(insets.bottom, 12),
+          },
+        ]}
       >
-        <View style={styles.imageSection}>
+        <View style={styles.imageContainer}>
           <FlatList
             ref={imagesListRef}
             data={service.images}
@@ -275,11 +280,6 @@ export default function ServiceDetails() {
             onMomentumScrollEnd={
               handleImageScroll
             }
-            getItemLayout={(_, index) => ({
-              length: screenWidth,
-              offset: screenWidth * index,
-              index,
-            })}
             renderItem={({ item, index }) => (
               <Pressable
                 onPress={() =>
@@ -290,24 +290,6 @@ export default function ServiceDetails() {
                   source={{ uri: item }}
                   style={styles.image}
                 />
-
-                <View
-                  style={styles.expandInformation}
-                >
-                  <Ionicons
-                    name="expand-outline"
-                    size={18}
-                    color="#FFFFFF"
-                  />
-
-                  <Text
-                    style={
-                      styles.expandInformationText
-                    }
-                  >
-                    Ver foto
-                  </Text>
-                </View>
               </Pressable>
             )}
           />
@@ -318,23 +300,10 @@ export default function ServiceDetails() {
           >
             <Ionicons
               name="arrow-back"
-              size={24}
-              color="#FFFFFF"
+              size={25}
+              color="#202020"
             />
           </Pressable>
-
-          <View style={styles.imageCounter}>
-            <Ionicons
-              name="images-outline"
-              size={16}
-              color="#FFFFFF"
-            />
-
-            <Text style={styles.imageCounterText}>
-              {currentImage + 1}/
-              {service.images.length}
-            </Text>
-          </View>
 
           {service.images.length > 1 && (
             <>
@@ -381,33 +350,31 @@ export default function ServiceDetails() {
               </Pressable>
 
               <View style={styles.dotsContainer}>
-                {service.images.map(
-                  (_, index) => (
-                    <Pressable
-                      key={index}
-                      style={[
-                        styles.dot,
-                        currentImage === index &&
-                          styles.activeDot,
-                      ]}
-                      onPress={() =>
-                        goToImage(index)
-                      }
-                    />
-                  )
-                )}
+                {service.images.map((_, index) => (
+                  <Pressable
+                    key={index}
+                    style={[
+                      styles.dot,
+                      currentImage === index &&
+                        styles.activeDot,
+                    ]}
+                    onPress={() =>
+                      goToImage(index)
+                    }
+                  />
+                ))}
               </View>
             </>
           )}
         </View>
 
         <View style={styles.information}>
-          <Text style={styles.price}>
-            {service.price}
-          </Text>
-
           <Text style={styles.title}>
             {service.title}
+          </Text>
+
+          <Text style={styles.price}>
+            R$ {service.price}
           </Text>
 
           <View style={styles.categoryBadge}>
@@ -468,31 +435,23 @@ export default function ServiceDetails() {
                 key={attendanceType}
                 style={styles.attendanceOption}
               >
-                <View
-                  style={styles.attendanceIcon}
-                >
+                <View style={styles.attendanceIcon}>
                   <Ionicons
                     name={
                       attendanceType === "local"
                         ? "storefront-outline"
                         : attendanceType ===
-                            "domicilio"
-                          ? "home-outline"
-                          : "videocam-outline"
+                          "domicilio"
+                        ? "home-outline"
+                        : "videocam-outline"
                     }
                     size={20}
                     color="#1677FF"
                   />
                 </View>
 
-                <Text
-                  style={styles.attendanceText}
-                >
-                  {
-                    attendanceLabels[
-                      attendanceType
-                    ]
-                  }
+                <Text style={styles.attendanceText}>
+                  {attendanceLabels[attendanceType]}
                 </Text>
               </View>
             )
@@ -504,21 +463,24 @@ export default function ServiceDetails() {
             Publicado por
           </Text>
 
-         <View style={styles.userCard}>
-  {service.userPhoto ? (
-  <View style={styles.avatar}>
-    <Image
-      source={{ uri: service.userPhoto }}
-      style={styles.avatarImage}
-    />
-  </View>
-) : (
-  <View style={styles.avatar}>
-    <Text style={styles.avatarText}>
-      {service.userName.charAt(0).toUpperCase()}
-    </Text>
-  </View>
-)}
+          <View style={styles.userCard}>
+            {service.userPhoto ? (
+              <Image
+                source={{
+                  uri: service.userPhoto,
+                }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {service.userName
+                    .charAt(0)
+                    .toUpperCase()}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.userInformation}>
               <Text style={styles.userName}>
                 {service.userName}
@@ -528,46 +490,60 @@ export default function ServiceDetails() {
                 Anunciante no ServiçoJá
               </Text>
             </View>
-          </View>
 
-          <View
-            style={styles.whatsappInformation}
-          >
-            <Ionicons
-              name="logo-whatsapp"
-              size={21}
-              color="#25D366"
-            />
+            <Pressable
+              style={styles.viewProfileButton}
+              onPress={handleViewProfile}
+            >
+              <Text
+                style={styles.viewProfileButtonText}
+              >
+                Ver perfil
+              </Text>
 
-            <Text style={styles.whatsappText}>
-              {service.whatsapp}
-            </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={17}
+                color="#1677FF"
+              />
+            </Pressable>
           </View>
         </View>
       </ScrollView>
 
-      <View style={styles.bottomContainer}>
+      {/* BOTÃO ADAPTÁVEL À NAVEGAÇÃO DO CELULAR */}
+      <View
+        style={[
+          styles.bottomContainer,
+          {
+            paddingBottom:
+              insets.bottom > 0
+                ? insets.bottom
+                : 12,
+          },
+        ]}
+      >
         <Pressable
-  style={[
-    styles.whatsappButton,
-    isOpeningChat &&
-      styles.disabledChatButton,
-  ]}
-  onPress={handleOpenChat}
-  disabled={isOpeningChat}
->
-  <Ionicons
-    name="chatbubble-ellipses"
-    size={23}
-    color="#FFFFFF"
-  />
+          style={[
+            styles.whatsappButton,
+            isOpeningChat &&
+              styles.disabledChatButton,
+          ]}
+          onPress={handleOpenChat}
+          disabled={isOpeningChat}
+        >
+          <Ionicons
+            name="chatbubble-ellipses"
+            size={23}
+            color="#FFFFFF"
+          />
 
-  <Text style={styles.whatsappButtonText}>
-    {isOpeningChat
-      ? "Abrindo conversa..."
-      : "Conversar"}
-  </Text>
-</Pressable>
+          <Text style={styles.whatsappButtonText}>
+            {isOpeningChat
+              ? "Abrindo conversa..."
+              : "Conversar"}
+          </Text>
+        </Pressable>
       </View>
 
       <Modal
@@ -580,7 +556,6 @@ export default function ServiceDetails() {
           <FlatList
             ref={fullscreenListRef}
             data={service.images}
-            style={styles.fullscreenList}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
@@ -619,9 +594,7 @@ export default function ServiceDetails() {
             />
           </Pressable>
 
-          <View
-            style={styles.fullscreenCounter}
-          >
+          <View style={styles.fullscreenCounter}>
             <Text
               style={styles.fullscreenCounterText}
             >
@@ -648,7 +621,7 @@ export default function ServiceDetails() {
               >
                 <Ionicons
                   name="chevron-back"
-                  size={38}
+                  size={32}
                   color="#FFFFFF"
                 />
               </Pressable>
@@ -673,7 +646,7 @@ export default function ServiceDetails() {
               >
                 <Ionicons
                   name="chevron-forward"
-                  size={38}
+                  size={32}
                   color="#FFFFFF"
                 />
               </Pressable>
@@ -691,88 +664,50 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
 
-  scrollContent: {
-    paddingBottom: 115,
-  },
+  scrollContent: {},
 
-  imageSection: {
-    position: "relative",
-    backgroundColor: "#E7E7E7",
+  imageContainer: {
+    width: screenWidth,
+    height: screenWidth * 0.78,
+    backgroundColor: "#EEEEEE",
   },
 
   image: {
     width: screenWidth,
-    height: 360,
+    height: screenWidth * 0.78,
     resizeMode: "cover",
-  },
-
-  expandInformation: {
-    position: "absolute",
-    right: 16,
-    bottom: 16,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0, 0, 0, 0.62)",
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  expandInformationText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
   },
 
   backButton: {
     position: "absolute",
     top: 48,
     left: 16,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(0, 0, 0, 0.58)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  imageCounter: {
-    position: "absolute",
-    top: 51,
-    right: 16,
-    height: 35,
-    borderRadius: 18,
-    backgroundColor: "rgba(0, 0, 0, 0.58)",
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  imageCounterText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
   imageArrow: {
     position: "absolute",
-    top: 160,
+    top: "50%",
+    marginTop: -22,
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center",
     justifyContent: "center",
   },
 
   leftImageArrow: {
-    left: 12,
+    left: 14,
   },
 
   rightImageArrow: {
-    right: 12,
+    right: 14,
   },
 
   disabledArrow: {
@@ -781,24 +716,21 @@ const styles = StyleSheet.create({
 
   dotsContainer: {
     position: "absolute",
-    bottom: 15,
-    left: 0,
-    right: 0,
+    bottom: 14,
+    alignSelf: "center",
     flexDirection: "row",
-    justifyContent: "center",
     gap: 7,
   },
 
   dot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.55)",
+    backgroundColor: "rgba(255,255,255,0.6)",
   },
 
   activeDot: {
-    width: 22,
+    width: 20,
     backgroundColor: "#FFFFFF",
   },
 
@@ -807,17 +739,17 @@ const styles = StyleSheet.create({
     paddingTop: 22,
   },
 
-  price: {
-    fontSize: 27,
-    fontWeight: "900",
-    color: "#1677FF",
-  },
-
   title: {
-    fontSize: 24,
+    fontSize: 25,
     fontWeight: "800",
     color: "#202020",
-    lineHeight: 31,
+    lineHeight: 32,
+  },
+
+  price: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#1677FF",
     marginTop: 7,
   },
 
@@ -826,11 +758,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#EAF3FF",
-    borderRadius: 20,
-    paddingHorizontal: 12,
+    backgroundColor: "#EEF5FF",
+    paddingHorizontal: 10,
     paddingVertical: 7,
-    marginTop: 14,
+    borderRadius: 8,
+    marginTop: 15,
   },
 
   categoryText: {
@@ -846,64 +778,59 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "800",
-    color: "#222222",
-    marginBottom: 13,
+    color: "#202020",
+    marginBottom: 12,
   },
 
   description: {
-    fontSize: 16,
-    color: "#555555",
-    lineHeight: 25,
+    fontSize: 15,
+    lineHeight: 23,
+    color: "#666666",
   },
 
   informationRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+    alignItems: "center",
   },
 
   rowTextContainer: {
-    flex: 1,
+    marginLeft: 12,
   },
 
   rowTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#282828",
+    color: "#202020",
   },
 
   rowDescription: {
     fontSize: 14,
-    color: "#707070",
-    marginTop: 4,
+    color: "#777777",
+    marginTop: 3,
   },
 
   attendanceOption: {
-    minHeight: 54,
-    borderRadius: 13,
-    backgroundColor: "#F4F8FF",
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 13,
-    marginBottom: 9,
+    marginBottom: 12,
   },
 
   attendanceIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#E0EDFF",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#EEF5FF",
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 12,
   },
 
   attendanceText: {
     fontSize: 15,
+    color: "#444444",
     fontWeight: "600",
-    color: "#353535",
-    marginLeft: 11,
   },
 
   userCard: {
@@ -912,54 +839,59 @@ const styles = StyleSheet.create({
   },
 
   avatar: {
-  width: 55,
-  height: 55,
-  borderRadius: 28,
-  backgroundColor: "#1677FF",
-  alignItems: "center",
-  justifyContent: "center",
-  overflow: "hidden",
-},
-avatarImage: {
-  width: "100%",
-  height: "100%",
-  borderRadius: 28,
-  resizeMode: "cover",
-},
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#1677FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#EEEEEE",
+  },
 
   avatarText: {
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: "800",
     color: "#FFFFFF",
   },
 
   userInformation: {
-    marginLeft: 13,
     flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
   },
 
   userName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
-    color: "#252525",
+    color: "#202020",
   },
 
   userDescription: {
     fontSize: 13,
     color: "#777777",
-    marginTop: 4,
+    marginTop: 3,
   },
 
-  whatsappInformation: {
+  viewProfileButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 17,
+    backgroundColor: "#EEF5FF",
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: 10,
   },
 
-  whatsappText: {
-    fontSize: 15,
-    color: "#555555",
+  viewProfileButtonText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#1677FF",
+    marginRight: 2,
   },
 
   bottomContainer: {
@@ -968,78 +900,69 @@ avatarImage: {
     right: 0,
     bottom: 0,
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 24,
     borderTopWidth: 1,
-    borderTopColor: "#EAEAEA",
+    borderTopColor: "#EEEEEE",
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
 
   whatsappButton: {
-    height: 57,
-    borderRadius: 15,
-    backgroundColor: "#25D366",
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: "#1677FF",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
   },
-
-  whatsappButtonText: {
-  color: "#FFFFFF",
-  fontSize: 17,
-  fontWeight: "800",
-},
 
   disabledChatButton: {
     opacity: 0.65,
   },
 
+  whatsappButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+    marginLeft: 9,
+  },
 
   fullscreenContainer: {
     flex: 1,
     backgroundColor: "#000000",
   },
 
-  fullscreenList: {
-  flex: 1,
-  width: screenWidth,
-  height: screenHeight,
-},
+  fullscreenImagePage: {
+    width: screenWidth,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-fullscreenImagePage: {
-  width: screenWidth,
-  height: screenHeight,
-  alignItems: "center",
-  justifyContent: "center",
-  backgroundColor: "#000000",
-},
-
-fullscreenImage: {
-  width: screenWidth,
-  height: screenHeight,
-},
+  fullscreenImage: {
+    width: screenWidth,
+    height: "100%",
+  },
 
   closeFullscreenButton: {
     position: "absolute",
-    top: Platform.OS === "web" ? 20 : 48,
-    left: 18,
+    top: 52,
+    right: 18,
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: "rgba(40, 40, 40, 0.8)",
+    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
 
   fullscreenCounter: {
     position: "absolute",
-    top: Platform.OS === "web" ? 24 : 53,
+    top: 60,
     alignSelf: "center",
-    backgroundColor: "rgba(40, 40, 40, 0.8)",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
   },
 
   fullscreenCounterText: {
@@ -1050,21 +973,22 @@ fullscreenImage: {
 
   fullscreenArrow: {
     position: "absolute",
-    top: "47%",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "rgba(40, 40, 40, 0.75)",
+    top: "50%",
+    marginTop: -25,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
 
   fullscreenLeftArrow: {
-    left: 18,
+    left: 14,
   },
 
   fullscreenRightArrow: {
-    right: 18,
+    right: 14,
   },
 
   notFoundContainer: {
@@ -1072,36 +996,34 @@ fullscreenImage: {
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 30,
+    padding: 30,
   },
 
   notFoundTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
-    color: "#262626",
-    marginTop: 15,
+    color: "#202020",
+    marginTop: 16,
   },
 
   notFoundDescription: {
     fontSize: 15,
     color: "#777777",
-    marginTop: 7,
     textAlign: "center",
+    marginTop: 8,
   },
 
   backHomeButton: {
-    height: 52,
-    borderRadius: 13,
+    marginTop: 24,
     backgroundColor: "#1677FF",
-    paddingHorizontal: 25,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 25,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
+    borderRadius: 12,
   },
 
-  backHomeText: {
+  backHomeButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "800",
   },
 });

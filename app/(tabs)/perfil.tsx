@@ -1,16 +1,23 @@
 import { Button } from "@/src/components/Button";
+import { useServices } from "@/src/contexts/ServiceContext";
 import { useUser } from "@/src/contexts/UserContext";
+
 import {
   showError,
   showInfo,
   showSuccess,
 } from "@/src/utils/toast";
+
 import { Ionicons } from "@expo/vector-icons";
+
 import * as ImagePicker from "expo-image-picker";
+
 import { LinearGradient } from "expo-linear-gradient";
 
 import { updateProfilePhoto } from "@/src/services/userService";
+
 import { router } from "expo-router";
+
 import {
   Image,
   ScrollView,
@@ -23,65 +30,86 @@ import {
 export default function Perfil() {
   const { user, logout, setUser } = useUser();
 
+  const { updateUserServices } = useServices();
+
   async function handleLogout() {
     await logout();
+
     router.replace("/");
   }
 
   async function handleSelectPhoto() {
-  try {
-    const permission =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (!permission.granted) {
-      showInfo(
-  "Permissão necessária",
-  "Permita o acesso à galeria para escolher uma foto."
-);
-      return;
-    }
+      if (!permission.granted) {
+        showInfo(
+          "Permissão necessária",
+          "Permita o acesso à galeria para escolher uma foto."
+        );
 
-    const result =
-      await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
+        return;
+      }
+
+      const result =
+        await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const imageUri = result.assets[0].uri;
+
+      if (!user) {
+        showError(
+          "Erro",
+          "Usuário não encontrado."
+        );
+
+        return;
+      }
+
+      // Atualiza a foto no perfil
+      const updatedUser =
+        await updateProfilePhoto(
+          user.id,
+          imageUri
+        );
+
+      // Atualiza o usuário no contexto
+      await setUser(updatedUser);
+
+      // Atualiza automaticamente todos os anúncios
+      // que pertencem a esse usuário
+      await updateUserServices({
+        userId: updatedUser.id,
+        userName: updatedUser.name,
+        userPhoto: updatedUser.photoURL,
       });
 
-    if (result.canceled) {
-      return;
+      showSuccess(
+        "Foto atualizada",
+        "Sua foto foi alterada em seu perfil e anúncios."
+      );
+    } catch (error: any) {
+      console.log(
+        "Erro ao atualizar foto:",
+        error
+      );
+
+      showError(
+        "Erro",
+        error.message ||
+          "Não foi possível atualizar sua foto."
+      );
     }
-
-    const imageUri = result.assets[0].uri;
-
-   if (!user) {
- showError(
-  "Erro",
-  "Usuário não encontrado."
-);
-  return;
-}
-
-const updatedUser = await updateProfilePhoto(
-  user.id,
-  imageUri
-);
-
-    await setUser(updatedUser);
-
-   showSuccess(
-  "Foto atualizada",
-  "Sua foto foi alterada com sucesso."
-);
-  } catch (error: any) {
-    console.log(error);
-    showError(
-  "Erro",
-  error.message
-);
   }
-}
 
   return (
     <ScrollView
@@ -93,18 +121,20 @@ const updatedUser = await updateProfilePhoto(
         style={styles.header}
       >
         <TouchableOpacity
-        style={styles.avatarContainer}
-        onPress={handleSelectPhoto}
-      >
+          style={styles.avatarContainer}
+          onPress={handleSelectPhoto}
+        >
           <Image
-          source={{
-            uri:
-              user?.photoURL ||
-              "https://ui-avatars.com/api/?background=2196F3&color=fff&name=" +
-                encodeURIComponent(user?.name || "Usuário"),
-          }}
-          style={styles.avatar}
-        />
+            source={{
+              uri:
+                user?.photoURL ||
+                "https://ui-avatars.com/api/?background=2196F3&color=fff&name=" +
+                  encodeURIComponent(
+                    user?.name || "Usuário"
+                  ),
+            }}
+            style={styles.avatar}
+          />
 
           <View style={styles.cameraButton}>
             <Ionicons
@@ -133,9 +163,7 @@ const updatedUser = await updateProfilePhoto(
       </LinearGradient>
 
       <View style={styles.content}>
-
         <View style={styles.card}>
-
           <View style={styles.infoItem}>
             <Ionicons
               name="mail-outline"
@@ -149,7 +177,8 @@ const updatedUser = await updateProfilePhoto(
               </Text>
 
               <Text style={styles.value}>
-                {user?.email || "Não informado"}
+                {user?.email ||
+                  "Não informado"}
               </Text>
             </View>
           </View>
@@ -169,48 +198,59 @@ const updatedUser = await updateProfilePhoto(
               </Text>
 
               <Text style={styles.value}>
-                {user?.phone || "Não informado"}
+                {user?.phone ||
+                  "Não informado"}
               </Text>
             </View>
           </View>
-
         </View>
 
         <View style={styles.statsContainer}>
-
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>
+              0
+            </Text>
+
             <Text style={styles.statTitle}>
               Serviços
             </Text>
           </View>
 
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>
+              0
+            </Text>
+
             <Text style={styles.statTitle}>
               Conversas
             </Text>
           </View>
 
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>
+              0
+            </Text>
+
             <Text style={styles.statTitle}>
               Favoritos
             </Text>
           </View>
 
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>5.0</Text>
+            <Text style={styles.statNumber}>
+              5.0
+            </Text>
+
             <Text style={styles.statTitle}>
               Avaliação
             </Text>
           </View>
-
         </View>
 
         <View style={styles.menu}>
-
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity
+            style={styles.menuItem}
+          >
             <Ionicons
               name="settings-outline"
               size={22}
@@ -228,7 +268,9 @@ const updatedUser = await updateProfilePhoto(
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity
+            style={styles.menuItem}
+          >
             <Ionicons
               name="notifications-outline"
               size={22}
@@ -246,7 +288,9 @@ const updatedUser = await updateProfilePhoto(
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity
+            style={styles.menuItem}
+          >
             <Ionicons
               name="shield-checkmark-outline"
               size={22}
@@ -264,7 +308,9 @@ const updatedUser = await updateProfilePhoto(
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity
+            style={styles.menuItem}
+          >
             <Ionicons
               name="help-circle-outline"
               size={22}
@@ -281,16 +327,19 @@ const updatedUser = await updateProfilePhoto(
               color="#999"
             />
           </TouchableOpacity>
-
         </View>
 
-        <View style={{ marginTop: 25, marginBottom: 40 }}>
+        <View
+          style={{
+            marginTop: 25,
+            marginBottom: 40,
+          }}
+        >
           <Button
             title="Sair da conta"
             onPress={handleLogout}
           />
         </View>
-
       </View>
     </ScrollView>
   );
@@ -348,7 +397,8 @@ const styles = StyleSheet.create({
     marginTop: 18,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor:
+      "rgba(255,255,255,0.18)",
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 30,

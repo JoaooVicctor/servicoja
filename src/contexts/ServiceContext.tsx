@@ -1,5 +1,7 @@
 import { Service } from "@/src/types/Service";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import {
   createContext,
   ReactNode,
@@ -9,6 +11,7 @@ import {
 } from "react";
 
 import { uploadImage } from "@/src/services/cloudinary";
+
 import { db } from "@/src/services/firebase";
 
 import {
@@ -17,7 +20,9 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  query,
   updateDoc,
+  where,
 } from "firebase/firestore";
 
 interface CreateServiceData {
@@ -48,6 +53,12 @@ interface UpdateServiceData {
   attendance: Service["attendance"];
 }
 
+interface UpdateUserServicesData {
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+}
+
 interface ServiceContextData {
   services: Service[];
 
@@ -67,6 +78,12 @@ interface ServiceContextData {
   getServiceById: (
     serviceId: string
   ) => Service | undefined;
+
+  updateUserServices: (
+    data: UpdateUserServicesData
+  ) => Promise<void>;
+
+  loadServices: () => Promise<void>;
 }
 
 interface ServiceProviderProps {
@@ -84,44 +101,40 @@ const ServiceContext =
 export function ServiceProvider({
   children,
 }: ServiceProviderProps) {
-  const [services, setServices] = useState<
-    Service[]
-  >([]);
+  const [services, setServices] =
+    useState<Service[]>([]);
 
   useEffect(() => {
     loadServices();
   }, []);
 
   async function loadServices() {
-  try {
-    const snapshot = await getDocs(
-      collection(db, "services")
-    );
+    try {
+      const snapshot = await getDocs(
+        collection(db, "services")
+      );
 
-    const loadedServices: Service[] =
-      snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Service, "id">),
-      }));
+      const loadedServices: Service[] =
+        snapshot.docs.map((serviceDoc) => ({
+          id: serviceDoc.id,
+          ...(serviceDoc.data() as Omit<
+            Service,
+            "id"
+          >),
+        }));
 
-    setServices(loadedServices);
-  } catch (error) {
-    console.log(
-      "Erro ao carregar serviços:",
-      error
-    );
-  }
-}
+      setServices(loadedServices);
 
-  async function saveServices(
-    updatedServices: Service[]
-  ) {
-    setServices(updatedServices);
-
-    await AsyncStorage.setItem(
-      SERVICES_STORAGE_KEY,
-      JSON.stringify(updatedServices)
-    );
+      await AsyncStorage.setItem(
+        SERVICES_STORAGE_KEY,
+        JSON.stringify(loadedServices)
+      );
+    } catch (error) {
+      console.log(
+        "Erro ao carregar serviços:",
+        error
+      );
+    }
   }
 
   function validateImages(images: string[]) {
@@ -139,115 +152,187 @@ export function ServiceProvider({
   }
 
   async function createService(
-  data: CreateServiceData
-): Promise<Service> {
-  try {
-    console.log(
-      "Iniciando publicação do serviço"
-    );
+    data: CreateServiceData
+  ): Promise<Service> {
+    try {
+      validateImages(data.images);
 
+      const uploadedImages =
+        await Promise.all(
+          data.images.map((image) =>
+            uploadImage(image)
+          )
+        );
+
+      const serviceData = {
+        ...data,
+        images: uploadedImages,
+        createdAt: new Date().toISOString(),
+      };
+
+      const docRef = await addDoc(
+        collection(db, "services"),
+        serviceData
+      );
+
+      const newService: Service = {
+        id: docRef.id,
+        ...serviceData,
+      };
+
+      setServices((oldServices) => [
+        newService,
+        ...oldServices,
+      ]);
+
+      return newService;
+    } catch (error) {
+      console.log(
+        "Erro ao publicar serviço:",
+        error
+      );
+
+      throw error;
+    }
+  }
+
+  async function updateService(
+    serviceId: string,
+    data: UpdateServiceData
+  ): Promise<Service> {
     validateImages(data.images);
 
-    console.log(
-      "Imagens selecionadas:",
-      data.images
+    const serviceToUpdate =
+      services.find(
+        (service) =>
+          service.id === serviceId
+      );
+
+    if (!serviceToUpdate) {
+      throw new Error(
+        "Serviço não encontrado."
+      );
+    }
+
+    await updateDoc(
+      doc(db, "services", serviceId),
+      {
+        ...data,
+      }
     );
 
-    const uploadedImages =
+    const updatedService: Service = {
+      ...serviceToUpdate,
+      ...data,
+    };
+
+    setServices((oldServices) =>
+      oldServices.map((service) =>
+        service.id === serviceId
+          ? updatedService
+          : service
+      )
+    );
+
+    return updatedService;
+  }
+
+  async function deleteService(
+    serviceId: string
+  ): Promise<void> {
+    await deleteDoc(
+      doc(db, "services", serviceId)
+    );
+
+    setServices((oldServices) =>
+      oldServices.filter(
+        (service) =>
+          service.id !== serviceId
+      )
+    );
+  }
+
+  async function updateUserServices({
+    userId,
+    userName,
+    userPhoto,
+  }: UpdateUserServicesData): Promise<void> {
+    try {
+      console.log(
+        "Atualizando anúncios do usuário:",
+        userId
+      );
+
+      console.log(
+        "Nova foto:",
+        userPhoto
+      );
+
+      const servicesQuery = query(
+        collection(db, "services"),
+        where("userId", "==", userId)
+      );
+
+      const snapshot = await getDocs(
+        servicesQuery
+      );
+
+      console.log(
+        "Quantidade de anúncios encontrados:",
+        snapshot.docs.length
+      );
+
       await Promise.all(
-        data.images.map((image) =>
-          uploadImage(image)
+        snapshot.docs.map(
+          async (serviceDoc) => {
+            await updateDoc(
+              doc(
+                db,
+                "services",
+                serviceDoc.id
+              ),
+              {
+                userName,
+                userPhoto: userPhoto || null,
+              }
+            );
+          }
         )
       );
 
-    console.log(
-      "Imagens enviadas:",
-      uploadedImages
-    );
+      // Atualiza imediatamente os anúncios
+      // que estão carregados no app
+      setServices((currentServices) =>
+        currentServices.map((service) => {
+          if (service.userId === userId) {
+            return {
+              ...service,
+              userName,
+              userPhoto,
+            };
+          }
 
-    const serviceData = {
-      ...data,
-      images: uploadedImages,
-      createdAt: new Date().toISOString(),
-    };
+          return service;
+        })
+      );
 
-    const docRef = await addDoc(
-      collection(db, "services"),
-      serviceData
-    );
+      // Recarrega todos os anúncios diretamente
+      // do Firestore para garantir que a nova foto
+      // apareça em todas as telas
+      await loadServices();
 
-    const newService: Service = {
-      id: docRef.id,
-      ...serviceData,
-    };
+      console.log(
+        "Todos os anúncios foram atualizados."
+      );
+    } catch (error) {
+      console.log(
+        "Erro ao atualizar anúncios do usuário:",
+        error
+      );
 
-    setServices((old) => [
-      newService,
-      ...old,
-    ]);
-
-    console.log(
-      "Serviço publicado com sucesso"
-    );
-
-    return newService;
-  } catch (error) {
-    console.log(
-      "Erro ao publicar serviço:",
-      error
-    );
-
-    throw error;
+      throw error;
+    }
   }
-}
-
-  async function updateService(
-  serviceId: string,
-  data: UpdateServiceData
-): Promise<Service> {
-  validateImages(data.images);
-
-  const serviceToUpdate = services.find(
-    (service) => service.id === serviceId
-  );
-
-  if (!serviceToUpdate) {
-    throw new Error("Serviço não encontrado.");
-  }
-
-  await updateDoc(doc(db, "services", serviceId), {
-    ...data,
-  });
-
-  const updatedService: Service = {
-    ...serviceToUpdate,
-    ...data,
-  };
-
-  setServices((old) =>
-    old.map((service) =>
-      service.id === serviceId
-        ? updatedService
-        : service
-    )
-  );
-
-  return updatedService;
-}
-
-  async function deleteService(
-  serviceId: string
-): Promise<void> {
-  await deleteDoc(
-    doc(db, "services", serviceId)
-  );
-
-  setServices((oldServices) =>
-    oldServices.filter(
-      (service) => service.id !== serviceId
-    )
-  );
-}
 
   function getServiceById(
     serviceId: string
@@ -266,6 +351,8 @@ export function ServiceProvider({
         updateService,
         deleteService,
         getServiceById,
+        updateUserServices,
+        loadServices,
       }}
     >
       {children}
