@@ -149,7 +149,10 @@ export default function Perfil() {
           {user?.name || "Usuário"}
         </Text>
 
-        <TouchableOpacity style={styles.editButton}>
+        <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => router.push("/edit-profile")}
+          >
           <Ionicons
             name="create-outline"
             size={18}

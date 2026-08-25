@@ -298,13 +298,13 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    height: 78,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
+  height: 100,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  paddingHorizontal: 16,
+  paddingTop: 28,
+},
 
   headerButton: {
     width: 44,

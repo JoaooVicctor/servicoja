@@ -631,7 +631,7 @@ const styles = StyleSheet.create({
 
   fixedHeader: {
     backgroundColor: colors.background,
-    paddingTop: 18,
+    paddingTop: 28,
     borderTopWidth: 1,
     borderTopColor: "#E7E7E7",
     borderBottomWidth: 1,
