@@ -79,7 +79,6 @@ if (
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import Constants from "expo-constants";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -1943,7 +1942,17 @@ function getDocumentInfo(fileName?: string) {
           />
         </Pressable>
 
-        <View
+        <Pressable
+  onPress={() => {
+    if (!otherUserId) return;
+
+    router.push({
+      pathname: "/profile/[id]",
+      params: {
+        id: otherUserId,
+      },
+    });
+  }}
   style={{
     flexDirection: "row",
     alignItems: "center",
@@ -1951,49 +1960,49 @@ function getDocumentInfo(fileName?: string) {
   }}
 >
   {otherUserPhoto ? (
-  <Image
-    source={{ uri: otherUserPhoto }}
-    style={{
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      marginRight: 12,
-    }}
-  />
-) : (
-  <View
-    style={{
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "#E5E5E5",
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 12,
-    }}
-  >
-    <Ionicons
-      name="person"
-      size={24}
-      color="#666"
+    <Image
+      source={{ uri: otherUserPhoto }}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        marginRight: 12,
+      }}
     />
+  ) : (
+    <View
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: "#E5E5E5",
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 12,
+      }}
+    >
+      <Ionicons
+        name="person"
+        size={24}
+        color="#666"
+      />
+    </View>
+  )}
+
+  <View>
+    <Text style={styles.headerTitle}>
+      {otherUserName}
+    </Text>
+
+    <Text style={styles.headerSubtitle}>
+      {isOtherUserTyping
+        ? " Digitando..."
+        : otherUserOnline
+        ? "🟢 Online"
+        : formatLastSeen(otherUserLastSeen)}
+    </Text>
   </View>
-)}
-
-          <View>
-            <Text style={styles.headerTitle}>
-              {otherUserName}
-            </Text>
-
-            <Text style={styles.headerSubtitle}>
-            {isOtherUserTyping
-  ? " Digitando..."
-  : otherUserOnline
-  ? "🟢 Online"
-  : formatLastSeen(otherUserLastSeen)}
-          </Text>
-          </View>
-        </View>
+</Pressable>
       </View>
 
     <FlatList
@@ -2039,10 +2048,7 @@ ListFooterComponent={
   <View
     style={{
       height: keyboardVisible
-        ? Platform.OS === "ios" ||
-          Constants.appOwnership === "expo"
-          ? keyboardHeight + stickyBarHeight
-          : stickyBarHeight
+        ? stickyBarHeight
         : 8,
     }}
   />
