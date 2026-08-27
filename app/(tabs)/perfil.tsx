@@ -252,8 +252,9 @@ export default function Perfil() {
 
         <View style={styles.menu}>
           <TouchableOpacity
-            style={styles.menuItem}
-          >
+              style={styles.menuItem}
+              onPress={() => router.push("/settings")}
+            >
             <Ionicons
               name="settings-outline"
               size={22}
