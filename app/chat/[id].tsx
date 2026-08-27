@@ -59,7 +59,6 @@ import {
   FlatList,
   Image,
   Keyboard,
-  LayoutAnimation,
   PanResponder,
   Platform,
   Pressable,
@@ -538,7 +537,6 @@ const [playbackRate, setPlaybackRate] =
   const [otherUserPhoto, setOtherUserPhoto] =
   useState<string | null>(null);
 
-const [keyboardHeight, setKeyboardHeight] = useState(0);
 const [keyboardVisible, setKeyboardVisible] = useState(false);
 
 
@@ -726,45 +724,31 @@ useEffect(() => {
   }, [messages, pendingMessages]);
 
 useEffect(() => {
-  const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(
-        250,
-        LayoutAnimation.Types.easeInEaseOut,
-        LayoutAnimation.Properties.opacity
-      )
-    );
+  const showSub = Keyboard.addListener(
+    "keyboardDidShow",
+    () => {
+      setKeyboardVisible(true);
 
-    setKeyboardVisible(true);
-    setKeyboardHeight(e.endCoordinates.height);
-  });
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({
+          animated: false,
+        });
+      }, 100);
+    }
+  );
 
-  const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(
-        250,
-        LayoutAnimation.Types.easeInEaseOut,
-        LayoutAnimation.Properties.opacity
-      )
-    );
-
-    setKeyboardVisible(false);
-    setKeyboardHeight(0);
-  });
+  const hideSub = Keyboard.addListener(
+    "keyboardDidHide",
+    () => {
+      setKeyboardVisible(false);
+    }
+  );
 
   return () => {
     showSub.remove();
     hideSub.remove();
   };
 }, []);
-
-useEffect(() => {
-  if (!isNearBottomRef.current) {
-    return;
-  }
-
-  scrollToEndAfterKeyboard();
-}, [keyboardHeight, stickyBarHeight]);
 
 
   useEffect(() => {
@@ -3411,9 +3395,9 @@ multiline
           onPress={() => setAttachMenuVisible(false)}
         >
           <Pressable
-            style={[styles.sheetContainer, { marginBottom: keyboardHeight }]}
-            onPress={() => {}}
-          >
+  style={styles.sheetContainer}
+  onPress={() => {}}
+>
             <View style={styles.sheetHandle} />
 
             <View style={styles.attachGrid}>
@@ -3473,9 +3457,9 @@ multiline
           onPress={() => setMenuVisible(false)}
         >
           <Pressable
-            style={[styles.sheetContainer, { marginBottom: keyboardHeight }]}
-            onPress={() => {}}
-          >
+  style={styles.sheetContainer}
+  onPress={() => {}}
+>
             <View style={styles.sheetHandle} />
 
             <Pressable

@@ -21,9 +21,8 @@ import {
   setDoc,
   Unsubscribe,
   updateDoc,
-  where
+  where,
 } from "firebase/firestore";
-
 
 export interface StartConversationData {
   serviceId: string;
@@ -67,21 +66,20 @@ export interface SendMessageData {
   replyTo?: ReplyMessage;
 }
 
-
 export async function startConversation(
   data: StartConversationData
 ): Promise<string> {
   const {
-  serviceId,
-  serviceTitle,
-  serviceImage,
-  customerId,
-  customerName,
-  customerPhoto,
-  ownerId,
-  ownerName,
-  ownerPhoto,
-} = data;
+    serviceId,
+    serviceTitle,
+    serviceImage,
+    customerId,
+    customerName,
+    customerPhoto,
+    ownerId,
+    ownerName,
+    ownerPhoto,
+  } = data;
 
   if (!serviceId) {
     throw new Error(
@@ -103,7 +101,6 @@ export async function startConversation(
 
   const conversationsReference =
     collection(db, "conversations");
-
 
   const existingConversationQuery = query(
     conversationsReference,
@@ -135,19 +132,22 @@ export async function startConversation(
     );
 
   if (existingConversation) {
-  await updateDoc(
-    doc(
-      db,
-      "conversations",
-      existingConversation.id
-    ),
-    {
-      hiddenFor: arrayRemove(customerId, ownerId),
-    }
-  );
+    await updateDoc(
+      doc(
+        db,
+        "conversations",
+        existingConversation.id
+      ),
+      {
+        hiddenFor: arrayRemove(
+          customerId,
+          ownerId
+        ),
+      }
+    );
 
-  return existingConversation.id;
-}
+    return existingConversation.id;
+  }
 
   const conversationReference = doc(
     conversationsReference
@@ -173,15 +173,15 @@ export async function startConversation(
     ownerName,
     ownerPhoto,
 
-   lastMessage: "",
-lastMessageAt: serverTimestamp(),
+    lastMessage: "",
+    lastMessageAt: serverTimestamp(),
 
-unreadCounts: {
-  [customerId]: 0,
-  [ownerId]: 0,
-},
+    unreadCounts: {
+      [customerId]: 0,
+      [ownerId]: 0,
+    },
 
-createdAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
   };
 
   if (serviceImage) {
@@ -196,7 +196,6 @@ createdAt: serverTimestamp(),
 
   return conversationReference.id;
 }
-
 
 export async function sendMessage(
   data: SendMessageData
@@ -219,7 +218,6 @@ export async function sendMessage(
 ): Promise<void> {
   let messageData: SendMessageData;
 
- 
   if (
     typeof dataOrConversationId ===
     "string"
@@ -237,26 +235,23 @@ export async function sendMessage(
   }
 
   const {
-  conversationId,
-  senderId,
-  senderName,
-  type,
-  text,
-  imageUrl,
-  videoUrl,
-  audioUrl,
-  duration,
-
-  documentUrl,
-  documentName,
-  documentSize,
-
-  latitude,
-  longitude,
-  locationAddress,
-
-  replyTo,
-} = messageData;
+    conversationId,
+    senderId,
+    senderName,
+    type,
+    text,
+    imageUrl,
+    videoUrl,
+    audioUrl,
+    duration,
+    documentUrl,
+    documentName,
+    documentSize,
+    latitude,
+    longitude,
+    locationAddress,
+    replyTo,
+  } = messageData;
 
   if (!conversationId) {
     throw new Error(
@@ -276,41 +271,55 @@ export async function sendMessage(
     );
   }
 
-  if (type === "text" && !text?.trim()) {
+  if (
+    type === "text" &&
+    !text?.trim()
+  ) {
     throw new Error(
       "Digite uma mensagem."
     );
   }
 
- if (type === "image" && !imageUrl) {
+  if (
+    type === "image" &&
+    !imageUrl
+  ) {
     throw new Error(
       "A imagem não foi enviada."
     );
   }
 
-  if (type === "video" && !videoUrl) {
+  if (
+    type === "video" &&
+    !videoUrl
+  ) {
     throw new Error(
       "O vídeo não foi enviado."
     );
   }
 
-  if (type === "audio" && !audioUrl) {
+  if (
+    type === "audio" &&
+    !audioUrl
+  ) {
     throw new Error(
       "O áudio não foi enviado."
     );
   }
 
   if (
-  type === "location" &&
-  (
-    messageData.latitude === undefined ||
-    messageData.longitude === undefined
-  )
-) {
-  throw new Error(
-    "A localização não foi obtida."
-  );
-}
+    type === "location" &&
+    (
+      messageData.latitude ===
+        undefined ||
+      messageData.longitude ===
+        undefined
+    )
+  ) {
+    throw new Error(
+      "A localização não foi obtida."
+    );
+  }
 
   const conversationReference = doc(
     db,
@@ -323,137 +332,182 @@ export async function sendMessage(
     "messages"
   );
 
-  let initialStatus: "sent" | "delivered" =
-  "sent";
+  let initialStatus:
+    | "sent"
+    | "delivered" = "sent";
 
-let recipientId = "";
-let recipientIsInsideThisConversation = false;
-let recipientPushTokens: string[] = [];
+  let recipientId = "";
 
-const conversationSnapshot =
-  await getDoc(conversationReference);
+  let recipientIsInsideThisConversation =
+    false;
 
-if (conversationSnapshot.exists()) {
-  const conversationData =
-    conversationSnapshot.data();
+  let recipientPushTokens: string[] =
+    [];
 
-  const participantIds =
-    conversationData.participantIds as
-      | string[]
-      | undefined;
+  // NOVO:
+  // Por padrão, recebe notificações.
+  // Só deixa de receber se estiver
+  // explicitamente como false no Firebase.
+  let recipientNotificationsEnabled =
+    true;
 
-  recipientId =
-  participantIds?.find(
-    (participantId) =>
-      participantId !== senderId
-  ) ?? "";
+  const conversationSnapshot =
+    await getDoc(conversationReference);
 
-  if (recipientId) {
-    const recipientReference = doc(
-      db,
-      "users",
-      recipientId
-    );
+  if (conversationSnapshot.exists()) {
+    const conversationData =
+      conversationSnapshot.data();
 
-    const recipientSnapshot =
-      await getDoc(recipientReference);
+    const participantIds =
+      conversationData.participantIds as
+        | string[]
+        | undefined;
 
-    if (recipientSnapshot.exists()) {
-  const recipientData =
-    recipientSnapshot.data();
+    recipientId =
+      participantIds?.find(
+        (participantId) =>
+          participantId !== senderId
+      ) ?? "";
 
-  if (recipientData.online === true) {
-    initialStatus = "delivered";
-  }
-
-  recipientIsInsideThisConversation =
-    recipientData.online === true &&
-    recipientData.activeConversationId ===
-      conversationId;
-
-  if (
-    Array.isArray(
-      recipientData.expoPushTokens
-    )
-  ) {
-    recipientPushTokens =
-      recipientData.expoPushTokens.filter(
-        (token: unknown) =>
-          typeof token === "string"
+    if (recipientId) {
+      const recipientReference = doc(
+        db,
+        "users",
+        recipientId
       );
+
+      const recipientSnapshot =
+        await getDoc(
+          recipientReference
+        );
+
+      if (
+        recipientSnapshot.exists()
+      ) {
+        const recipientData =
+          recipientSnapshot.data();
+
+        // NOVO:
+        // Se notificationsEnabled for false,
+        // não envia a notificação.
+        recipientNotificationsEnabled =
+          recipientData.notificationsEnabled !==
+          false;
+
+        if (
+          recipientData.online === true
+        ) {
+          initialStatus =
+            "delivered";
+        }
+
+        recipientIsInsideThisConversation =
+          recipientData.online === true &&
+          recipientData.activeConversationId ===
+            conversationId;
+
+        if (
+          Array.isArray(
+            recipientData.expoPushTokens
+          )
+        ) {
+          recipientPushTokens =
+            recipientData.expoPushTokens.filter(
+              (token: unknown) =>
+                typeof token === "string"
+            );
+        }
+      }
+    }
   }
-}
-  }
-}
 
   const newMessage: Record<
-  string,
-  unknown
-> = {
-  conversationId,
-  senderId,
-  senderName,
-  type,
-  createdAt: serverTimestamp(),
-  status: initialStatus,
-};
+    string,
+    unknown
+  > = {
+    conversationId,
+    senderId,
+    senderName,
+    type,
+    createdAt: serverTimestamp(),
+    status: initialStatus,
+  };
 
-if (replyTo) {
-  newMessage.replyTo = replyTo;
-}
-
-  if (type === "text") {
-    newMessage.text = text?.trim();
+  if (replyTo) {
+    newMessage.replyTo = replyTo;
   }
 
- if (type === "image") {
-    newMessage.imageUrl = imageUrl;
+  if (type === "text") {
+    newMessage.text =
+      text?.trim();
+  }
+
+  if (type === "image") {
+    newMessage.imageUrl =
+      imageUrl;
 
     if (text?.trim()) {
-      newMessage.text = text.trim();
+      newMessage.text =
+        text.trim();
     }
   }
 
   if (type === "video") {
-    newMessage.videoUrl = videoUrl;
+    newMessage.videoUrl =
+      videoUrl;
 
     if (text?.trim()) {
-      newMessage.text = text.trim();
+      newMessage.text =
+        text.trim();
     }
   }
 
   if (type === "audio") {
-    newMessage.audioUrl = audioUrl;
+    newMessage.audioUrl =
+      audioUrl;
 
     if (
-      typeof duration === "number"
+      typeof duration ===
+      "number"
     ) {
-      newMessage.duration = duration;
+      newMessage.duration =
+        duration;
     }
   }
 
   if (type === "document") {
-  newMessage.documentUrl = documentUrl;
-  newMessage.documentName = documentName;
-  newMessage.documentSize = documentSize;
-}
+    newMessage.documentUrl =
+      documentUrl;
 
-if (type === "location") {
-  newMessage.latitude = latitude;
-  newMessage.longitude = longitude;
-  newMessage.locationAddress = locationAddress;
-}
+    newMessage.documentName =
+      documentName;
+
+    newMessage.documentSize =
+      documentSize;
+  }
+
+  if (type === "location") {
+    newMessage.latitude =
+      latitude;
+
+    newMessage.longitude =
+      longitude;
+
+    newMessage.locationAddress =
+      locationAddress;
+  }
 
   const createdMessageReference =
-  await addDoc(
-    messagesReference,
-    newMessage
-  );
+    await addDoc(
+      messagesReference,
+      newMessage
+    );
 
   let lastMessage = "";
 
   if (type === "text") {
-    lastMessage = text?.trim() ?? "";
+    lastMessage =
+      text?.trim() ?? "";
   }
 
   if (type === "image") {
@@ -469,56 +523,76 @@ if (type === "location") {
   }
 
   if (type === "document") {
-  lastMessage = "📄 Documento";
+    lastMessage =
+      "📄 Documento";
   }
 
   if (type === "location") {
-  lastMessage = "📍 Localização";
-}
+    lastMessage =
+      "📍 Localização";
+  }
 
- const conversationUpdate: Record<
-  string,
-  unknown
-> = {
-  lastMessage,
-  lastMessageId:
-    createdMessageReference.id,
-  lastMessageAt:
-    serverTimestamp(),
-  hiddenFor: recipientId
-    ? arrayRemove(senderId, recipientId)
-    : arrayRemove(senderId),
-};
+  const conversationUpdate: Record<
+    string,
+    unknown
+  > = {
+    lastMessage,
 
-if (
-  recipientId &&
-  !recipientIsInsideThisConversation
-) {
-  conversationUpdate[
-    `unreadCounts.${recipientId}`
-  ] = increment(1);
-}
+    lastMessageId:
+      createdMessageReference.id,
 
-await updateDoc(
-  conversationReference,
-  conversationUpdate
-);
+    lastMessageAt:
+      serverTimestamp(),
 
-if (
-  recipientId &&
-  !recipientIsInsideThisConversation &&
-  recipientPushTokens.length > 0
-) {
-await sendPushNotifications({
-  tokens: recipientPushTokens,
-  title: `Nova mensagem de ${senderName}`,
-  body: lastMessage || "Toque para abrir a conversa",
-  data: {
-    type: "chat",
-    conversationId,
-  },
-});
-}
+    hiddenFor: recipientId
+      ? arrayRemove(
+          senderId,
+          recipientId
+        )
+      : arrayRemove(senderId),
+  };
+
+  if (
+    recipientId &&
+    !recipientIsInsideThisConversation
+  ) {
+    conversationUpdate[
+      `unreadCounts.${recipientId}`
+    ] = increment(1);
+  }
+
+  await updateDoc(
+    conversationReference,
+    conversationUpdate
+  );
+
+  // Só envia push se:
+  // 1. Existe destinatário
+  // 2. Ele não está dentro desta conversa
+  // 3. As notificações dele estão ativadas
+  // 4. Ele possui um Expo Push Token
+  if (
+    recipientId &&
+    !recipientIsInsideThisConversation &&
+    recipientNotificationsEnabled &&
+    recipientPushTokens.length > 0
+  ) {
+    await sendPushNotifications({
+      tokens: recipientPushTokens,
+
+      title:
+        `Nova mensagem de ${senderName}`,
+
+      body:
+        lastMessage ||
+        "Toque para abrir a conversa",
+
+      data: {
+        type: "chat",
+        conversationId,
+      },
+    });
+  }
 }
 
 export async function deleteMessageForEveryone(
@@ -567,40 +641,48 @@ export async function deleteMessageForEveryone(
     );
   }
 
-  
-
   const messageData =
     messageSnapshot.data();
 
   if (
-    messageData.senderId !== requesterId
+    messageData.senderId !==
+    requesterId
   ) {
     throw new Error(
       "Você só pode apagar para todos as mensagens que enviou."
     );
   }
 
-  await updateDoc(messageReference, {
-    deleted: true,
-    deletedAt: serverTimestamp(),
+  await updateDoc(
+    messageReference,
+    {
+      deleted: true,
+      deletedAt:
+        serverTimestamp(),
 
-    text: "",
-    imageUrl: "",
-    videoUrl: "",
-    audioUrl: "",
-    documentUrl: "",
-documentName: "",
-documentSize: null,
+      text: "",
+      imageUrl: "",
+      videoUrl: "",
+      audioUrl: "",
 
-latitude: null,
-longitude: null,
-locationAddress: "",
-  });
+      documentUrl: "",
+      documentName: "",
+      documentSize: null,
+
+      latitude: null,
+      longitude: null,
+      locationAddress: "",
+    }
+  );
 
   const conversationSnapshot =
-    await getDoc(conversationReference);
+    await getDoc(
+      conversationReference
+    );
 
-  if (!conversationSnapshot.exists()) {
+  if (
+    !conversationSnapshot.exists()
+  ) {
     return;
   }
 
@@ -616,6 +698,7 @@ locationAddress: "",
       {
         lastMessage:
           "🚫 Mensagem apagada",
+
         lastMessageAt:
           serverTimestamp(),
       }
@@ -654,129 +737,175 @@ export async function deleteMessageForMe(
     messageId
   );
 
-  await updateDoc(messageReference, {
-    hiddenFor: arrayUnion(userId),
-  });
+  await updateDoc(
+    messageReference,
+    {
+      hiddenFor:
+        arrayUnion(userId),
+    }
+  );
 }
 
 export async function markMessagesAsDelivered(
   conversationId: string,
   userId: string
 ): Promise<void> {
-  if (!conversationId || !userId) {
+  if (
+    !conversationId ||
+    !userId
+  ) {
     return;
   }
 
   await updateDoc(
-    doc(db, "conversations", conversationId),
+    doc(
+      db,
+      "conversations",
+      conversationId
+    ),
     {
-      hiddenFor: arrayRemove(userId),
+      hiddenFor:
+        arrayRemove(userId),
     }
   ).catch(() => {});
 
-  const messagesReference = collection(
-    db,
-    "conversations",
-    conversationId,
-    "messages"
-  );
+  const messagesReference =
+    collection(
+      db,
+      "conversations",
+      conversationId,
+      "messages"
+    );
 
-  const messagesSnapshot = await getDocs(
-    messagesReference
-  );
+  const messagesSnapshot =
+    await getDocs(
+      messagesReference
+    );
 
-  const updates = messagesSnapshot.docs.map(
-    async (messageDocument) => {
-      const messageData =
-        messageDocument.data();
+  const updates =
+    messagesSnapshot.docs.map(
+      async (messageDocument) => {
+        const messageData =
+          messageDocument.data();
 
-      const isReceivedMessage =
-        messageData.senderId !== userId;
+        const isReceivedMessage =
+          messageData.senderId !==
+          userId;
 
-      const canBeMarkedAsRead =
-        messageData.status === "sent" ||
-        messageData.status === "delivered";
+        const canBeMarkedAsRead =
+          messageData.status ===
+            "sent" ||
+          messageData.status ===
+            "delivered";
 
-      const isDeleted =
-        messageData.deleted === true;
+        const isDeleted =
+          messageData.deleted === true;
 
-      if (
-        isReceivedMessage &&
-        canBeMarkedAsRead &&
-        !isDeleted
-      ) {
-        await updateDoc(
-          messageDocument.ref,
-          {
-            status: "read",
-            readAt: serverTimestamp(),
-          }
-        );
+        if (
+          isReceivedMessage &&
+          canBeMarkedAsRead &&
+          !isDeleted
+        ) {
+          await updateDoc(
+            messageDocument.ref,
+            {
+              status: "read",
+              readAt:
+                serverTimestamp(),
+            }
+          );
+        }
       }
-    }
-  );
+    );
 
   await Promise.all(updates);
 
   await updateDoc(
-  doc(db, "conversations", conversationId),
-  {
-    [`unreadCounts.${userId}`]: 0,
-  }
-);
+    doc(
+      db,
+      "conversations",
+      conversationId
+    ),
+    {
+      [`unreadCounts.${userId}`]:
+        0,
+    }
+  );
 }
 
 export async function hideConversation(
   conversationId: string,
   userId: string
 ) {
-  if (!conversationId || !userId) {
+  if (
+    !conversationId ||
+    !userId
+  ) {
     return;
   }
 
   await updateDoc(
-    doc(db, "conversations", conversationId),
+    doc(
+      db,
+      "conversations",
+      conversationId
+    ),
     {
-      hiddenFor: arrayUnion(userId),
+      hiddenFor:
+        arrayUnion(userId),
     }
   );
 }
+
 export async function setTyping(
   conversationId: string,
   userId: string,
   typing: boolean
 ) {
-  if (!conversationId || !userId) {
+  if (
+    !conversationId ||
+    !userId
+  ) {
     return;
   }
 
   await updateDoc(
-    doc(db, "conversations", conversationId),
+    doc(
+      db,
+      "conversations",
+      conversationId
+    ),
     {
-      [`typing.${userId}`]: typing,
+      [`typing.${userId}`]:
+        typing,
     }
   );
 }
 
 export function listenTyping(
   conversationId: string,
-  callback: (typing: Record<string, boolean>) => void
+  callback: (
+    typing: Record<string, boolean>
+  ) => void
 ): Unsubscribe {
-
   return onSnapshot(
-    doc(db, "conversations", conversationId),
+    doc(
+      db,
+      "conversations",
+      conversationId
+    ),
     (snapshot) => {
-
       if (!snapshot.exists()) {
         callback({});
         return;
       }
 
-      const data = snapshot.data();
+      const data =
+        snapshot.data();
 
-      callback(data.typing ?? {});
+      callback(
+        data.typing ?? {}
+      );
     }
   );
 }
-
-

@@ -273,24 +273,25 @@ export default function Perfil() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.menuItem}
-          >
-            <Ionicons
-              name="notifications-outline"
-              size={22}
-              color="#2196F3"
-            />
+  style={styles.menuItem}
+  onPress={() => router.push("/notifications")}
+>
+  <Ionicons
+    name="notifications-outline"
+    size={22}
+    color="#2196F3"
+  />
 
-            <Text style={styles.menuText}>
-              Notificações
-            </Text>
+  <Text style={styles.menuText}>
+    Notificações
+  </Text>
 
-            <Ionicons
-              name="chevron-forward"
-              size={20}
-              color="#999"
-            />
-          </TouchableOpacity>
+  <Ionicons
+    name="chevron-forward"
+    size={20}
+    color="#999"
+  />
+</TouchableOpacity>
 
           <TouchableOpacity
             style={styles.menuItem}
