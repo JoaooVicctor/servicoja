@@ -8,10 +8,14 @@ import {
 
 import { User } from "@/src/types/user";
 
-import { signOut } from "firebase/auth";
+import {
+  deleteUser as deleteAuthUser,
+  signOut,
+} from "firebase/auth";
 
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
@@ -29,8 +33,12 @@ import {
 
 interface UserContextData {
   user: User | null;
+
   setUser: (user: User) => Promise<void>;
+
   logout: () => Promise<void>;
+
+  deleteAccount: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextData>(
@@ -78,7 +86,8 @@ export function UserProvider({
             doc(db, "services", serviceDoc.id),
             {
               userName: updatedUser.name,
-              userPhoto: updatedUser.photoURL ?? null,
+              userPhoto:
+                updatedUser.photoURL ?? null,
             }
           )
       );
@@ -114,12 +123,74 @@ export function UserProvider({
     await removeUser();
   }
 
+  async function deleteAccount(): Promise<void> {
+    const currentUser = auth.currentUser;
+
+    if (!currentUser || !user?.id) {
+      throw new Error(
+        "Usuário não encontrado."
+      );
+    }
+
+    const userId = user.id;
+
+    try {
+      // 1. Buscar todos os serviços do usuário
+      const servicesQuery = query(
+        collection(db, "services"),
+        where("userId", "==", userId)
+      );
+
+      const servicesSnapshot =
+        await getDocs(servicesQuery);
+
+      // 2. Apagar todos os serviços
+      await Promise.all(
+        servicesSnapshot.docs.map(
+          (serviceDoc) =>
+            deleteDoc(
+              doc(
+                db,
+                "services",
+                serviceDoc.id
+              )
+            )
+        )
+      );
+
+      // 3. Apagar documento do usuário
+      await deleteDoc(
+        doc(db, "users", userId)
+      );
+
+      // 4. Apagar conta do Firebase Authentication
+      await deleteAuthUser(currentUser);
+
+      // 5. Limpar dados locais
+      setUserState(null);
+
+      await removeUser();
+
+      console.log(
+        "Conta excluída com sucesso."
+      );
+    } catch (error) {
+      console.log(
+        "Erro ao excluir conta:",
+        error
+      );
+
+      throw error;
+    }
+  }
+
   return (
     <UserContext.Provider
       value={{
         user,
         setUser,
         logout,
+        deleteAccount,
       }}
     >
       {children}

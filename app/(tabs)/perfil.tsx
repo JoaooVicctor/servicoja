@@ -19,6 +19,7 @@ import { updateProfilePhoto } from "@/src/services/userService";
 import { router } from "expo-router";
 
 import {
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -28,15 +29,59 @@ import {
 } from "react-native";
 
 export default function Perfil() {
-  const { user, logout, setUser } = useUser();
+  const {
+  user,
+  logout,
+  setUser,
+  deleteAccount,
+} = useUser();
 
   const { updateUserServices } = useServices();
 
   async function handleLogout() {
-    await logout();
+  await logout();
 
-    router.replace("/");
-  }
+  router.replace("/");
+}
+
+async function handleDeleteAccount() {
+  Alert.alert(
+    "Excluir conta?",
+    "Sua conta e todos os seus dados serão excluídos permanentemente. Esta ação não poderá ser desfeita.",
+    [
+      {
+        text: "Cancelar",
+        style: "cancel",
+      },
+      {
+        text: "Excluir conta",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteAccount();
+
+            router.replace("/");
+
+            Alert.alert(
+              "Conta excluída",
+              "Sua conta foi excluída com sucesso."
+            );
+          } catch (error: any) {
+            console.log(
+              "Erro ao excluir conta:",
+              error
+            );
+
+            Alert.alert(
+              "Erro",
+              "Não foi possível excluir sua conta. Tente novamente."
+            );
+          }
+        },
+      },
+    ]
+  );
+}
 
   async function handleSelectPhoto() {
     try {
@@ -294,8 +339,9 @@ export default function Perfil() {
 </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.menuItem}
-          >
+  style={styles.menuItem}
+  onPress={() => router.push("/privacy")}
+>
             <Ionicons
               name="shield-checkmark-outline"
               size={22}
@@ -315,6 +361,7 @@ export default function Perfil() {
 
           <TouchableOpacity
             style={styles.menuItem}
+            onPress={() => router.push("/help")}
           >
             <Ionicons
               name="help-circle-outline"
@@ -335,16 +382,31 @@ export default function Perfil() {
         </View>
 
         <View
-          style={{
-            marginTop: 25,
-            marginBottom: 40,
-          }}
-        >
-          <Button
-            title="Sair da conta"
-            onPress={handleLogout}
-          />
-        </View>
+  style={{
+    marginTop: 25,
+    marginBottom: 40,
+  }}
+>
+  <Button
+    title="Sair da conta"
+    onPress={handleLogout}
+  />
+
+  <TouchableOpacity
+    style={styles.deleteAccountButton}
+    onPress={handleDeleteAccount}
+  >
+    <Ionicons
+      name="trash-outline"
+      size={20}
+      color="#E53935"
+    />
+
+    <Text style={styles.deleteAccountText}>
+      Excluir conta
+    </Text>
+  </TouchableOpacity>
+</View>
       </View>
     </ScrollView>
   );
@@ -529,4 +591,21 @@ const styles = StyleSheet.create({
     color: "#333",
     fontWeight: "600",
   },
+  deleteAccountButton: {
+  marginTop: 18,
+  height: 54,
+  borderWidth: 1,
+  borderColor: "#E53935",
+  borderRadius: 14,
+  flexDirection: "row",
+  justifyContent: "center",
+  alignItems: "center",
+},
+
+deleteAccountText: {
+  color: "#E53935",
+  fontSize: 16,
+  fontWeight: "700",
+  marginLeft: 8,
+},
 });
