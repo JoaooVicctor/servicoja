@@ -145,16 +145,21 @@ export default function ServiceDetails() {
     }, 100);
   }
 
-  function handleViewProfile() {
-    if (!service) return;
+ function handleViewProfile() {
+  if (!service) return;
 
-    router.push({
-      pathname: "/profile/[id]",
-      params: {
-        id: service.userId,
-      },
-    });
+
+  if (user?.id === service.userId) {
+    router.push("/perfil");
+    return;
   }
+  router.push({
+    pathname: "/profile/[id]",
+    params: {
+      id: service.userId,
+    },
+  });
+}
 
   async function handleOpenChat() {
     if (!service) return;

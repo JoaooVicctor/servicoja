@@ -857,6 +857,34 @@ export async function hideConversation(
   );
 }
 
+export async function hideAllUserConversations(
+  userId: string
+): Promise<void> {
+  if (!userId) {
+    return;
+  }
+
+  const conversationsQuery = query(
+    collection(db, "conversations"),
+    where("participantIds", "array-contains", userId)
+  );
+
+  const snapshot = await getDocs(
+    conversationsQuery
+  );
+
+  await Promise.all(
+    snapshot.docs.map((conversationDocument) =>
+      updateDoc(
+        conversationDocument.ref,
+        {
+          hiddenFor: arrayUnion(userId),
+        }
+      )
+    )
+  );
+}
+
 export async function setTyping(
   conversationId: string,
   userId: string,

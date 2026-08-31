@@ -1,3 +1,4 @@
+import { hideAllUserConversations } from "@/src/services/chat";
 import { auth, db } from "@/src/services/firebase";
 
 import {
@@ -10,6 +11,9 @@ import { User } from "@/src/types/user";
 
 import {
   deleteUser as deleteAuthUser,
+  EmailAuthProvider,
+  User as FirebaseUser, // NOVO
+  reauthenticateWithCredential,
   signOut,
 } from "firebase/auth";
 
@@ -34,16 +38,22 @@ import {
 interface UserContextData {
   user: User | null;
 
-  setUser: (user: User) => Promise<void>;
+  setUser: (
+    user: User
+  ) => Promise<void>;
 
   logout: () => Promise<void>;
 
-  deleteAccount: () => Promise<void>;
+  deleteAccount: (
+    authenticatedUser: FirebaseUser,
+    password: string
+  ) => Promise<void>;
 }
 
-const UserContext = createContext<UserContextData>(
-  {} as UserContextData
-);
+const UserContext =
+  createContext<UserContextData>(
+    {} as UserContextData
+  );
 
 interface UserProviderProps {
   children: ReactNode;
@@ -73,26 +83,39 @@ export function UserProvider({
     try {
       const servicesQuery = query(
         collection(db, "services"),
-        where("userId", "==", updatedUser.id)
+        where(
+          "userId",
+          "==",
+          updatedUser.id
+        )
       );
 
-      const snapshot = await getDocs(
-        servicesQuery
-      );
+      const snapshot =
+        await getDocs(servicesQuery);
 
-      const updatePromises = snapshot.docs.map(
-        (serviceDoc) =>
-          updateDoc(
-            doc(db, "services", serviceDoc.id),
-            {
-              userName: updatedUser.name,
-              userPhoto:
-                updatedUser.photoURL ?? null,
-            }
-          )
-      );
+      const updatePromises =
+        snapshot.docs.map(
+          (serviceDoc) =>
+            updateDoc(
+              doc(
+                db,
+                "services",
+                serviceDoc.id
+              ),
+              {
+                userName:
+                  updatedUser.name,
 
-      await Promise.all(updatePromises);
+                userPhoto:
+                  updatedUser.photoURL ??
+                  null,
+              }
+            )
+        );
+
+      await Promise.all(
+        updatePromises
+      );
 
       console.log(
         "Serviços do usuário atualizados com sucesso."
@@ -112,7 +135,9 @@ export function UserProvider({
 
     await saveUser(updatedUser);
 
-    await updateUserServices(updatedUser);
+    await updateUserServices(
+      updatedUser
+    );
   }
 
   async function logout() {
@@ -123,28 +148,62 @@ export function UserProvider({
     await removeUser();
   }
 
-  async function deleteAccount(): Promise<void> {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser || !user?.id) {
-      throw new Error(
-        "Usuário não encontrado."
-      );
-    }
-
-    const userId = user.id;
+  async function deleteAccount(
+    authenticatedUser: FirebaseUser,
+    password: string
+  ): Promise<void> {
+    const userId =
+      authenticatedUser.uid;
 
     try {
-      // 1. Buscar todos os serviços do usuário
+      console.log(
+        "Iniciando exclusão da conta:",
+        userId
+      );
+
+      // 0. Reautentica o usuário com a senha
+      // antes de fazer qualquer exclusão
+      if (authenticatedUser.email) {
+        const credential =
+          EmailAuthProvider.credential(
+            authenticatedUser.email,
+            password
+          );
+
+        await reauthenticateWithCredential(
+          authenticatedUser,
+          credential
+        );
+      }
+
+      // 1. Esconder todas as conversas
+      // somente para este usuário
+      await hideAllUserConversations(
+        userId
+      );
+
+      // 2. Buscar todos os serviços
+      // pertencentes ao usuário
       const servicesQuery = query(
         collection(db, "services"),
-        where("userId", "==", userId)
+        where(
+          "userId",
+          "==",
+          userId
+        )
       );
 
       const servicesSnapshot =
-        await getDocs(servicesQuery);
+        await getDocs(
+          servicesQuery
+        );
 
-      // 2. Apagar todos os serviços
+      console.log(
+        "Serviços encontrados:",
+        servicesSnapshot.docs.length
+      );
+
+      // 3. Apagar todos os serviços
       await Promise.all(
         servicesSnapshot.docs.map(
           (serviceDoc) =>
@@ -158,15 +217,21 @@ export function UserProvider({
         )
       );
 
-      // 3. Apagar documento do usuário
+      // 4. Apagar documento do usuário
       await deleteDoc(
-        doc(db, "users", userId)
+        doc(
+          db,
+          "users",
+          userId
+        )
       );
 
-      // 4. Apagar conta do Firebase Authentication
-      await deleteAuthUser(currentUser);
+      // 5. Apagar conta do Firebase Authentication
+      await deleteAuthUser(
+        authenticatedUser
+      );
 
-      // 5. Limpar dados locais
+      // 6. Limpar dados locais
       setUserState(null);
 
       await removeUser();

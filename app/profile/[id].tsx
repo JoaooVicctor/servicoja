@@ -1,4 +1,6 @@
 import { useServices } from "@/src/contexts/ServiceContext";
+import { useUser } from "@/src/contexts/UserContext";
+import { createReport } from "@/src/services/report";
 
 import { Service } from "@/src/types/Service";
 
@@ -6,23 +8,41 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
+  Alert,
   FlatList,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
 export default function PublicProfileScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id } =
+    useLocalSearchParams<{ id: string }>();
 
   const router = useRouter();
 
   const { services } = useServices();
+
+  const { user } = useUser();
+
+  const [menuVisible, setMenuVisible] =
+    useState(false);
+
+  const [reportModalVisible, setReportModalVisible] =
+    useState(false);
+
+  const [reportDescription, setReportDescription] =
+    useState("");
+
+  const [sendingReport, setSendingReport] =
+    useState(false);
 
   const userServices = useMemo(() => {
     return services.filter(
@@ -59,6 +79,105 @@ export default function PublicProfileScreen() {
     );
   }
 
+  async function handleReportUser(
+    reason: string
+  ) {
+    if (!user?.id) {
+      Alert.alert(
+        "Erro",
+        "Você precisa estar conectado para denunciar."
+      );
+      return;
+    }
+
+    if (user.id === id) {
+      Alert.alert(
+        "Ação inválida",
+        "Você não pode denunciar a si mesmo."
+      );
+      return;
+    }
+
+    try {
+      setSendingReport(true);
+
+      await createReport({
+        reporterId: user.id,
+        reportedUserId: id,
+        type: "user",
+        reason,
+        description:
+          reportDescription.trim() ||
+          undefined,
+      });
+
+      setReportModalVisible(false);
+      setReportDescription("");
+
+      Alert.alert(
+        "Denúncia enviada",
+        "Obrigado por nos informar. A denúncia será analisada pela equipe do ServiçoJá."
+      );
+    } catch (error) {
+      console.log(
+        "Erro ao denunciar usuário:",
+        error
+      );
+
+      Alert.alert(
+        "Erro",
+        error instanceof Error
+          ? error.message
+          : "Não foi possível enviar a denúncia."
+      );
+    } finally {
+      setSendingReport(false);
+    }
+  }
+
+  function handleBlockUser() {
+    if (!user?.id) {
+      Alert.alert(
+        "Erro",
+        "Você precisa estar conectado para bloquear alguém."
+      );
+      return;
+    }
+
+    if (user.id === id) {
+      return;
+    }
+
+    Alert.alert(
+      "Bloquear usuário?",
+      `Você não verá mais as interações desse usuário. Deseja continuar?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Bloquear",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Bloqueio",
+              "A função de bloqueio será concluída na próxima etapa."
+            );
+          },
+        },
+      ]
+    );
+  }
+
+  function openReportModal() {
+    setMenuVisible(false);
+
+    setTimeout(() => {
+      setReportModalVisible(true);
+    }, 200);
+  }
+
   function renderService({
     item,
   }: {
@@ -68,7 +187,8 @@ export default function PublicProfileScreen() {
       <Pressable
         style={({ pressed }) => [
           styles.serviceCard,
-          pressed && styles.serviceCardPressed,
+          pressed &&
+            styles.serviceCardPressed,
         ]}
         onPress={() =>
           router.push({
@@ -79,7 +199,11 @@ export default function PublicProfileScreen() {
           })
         }
       >
-        <View style={styles.serviceImageContainer}>
+        <View
+          style={
+            styles.serviceImageContainer
+          }
+        >
           <Image
             source={{
               uri: item.images[0],
@@ -100,7 +224,11 @@ export default function PublicProfileScreen() {
             R$ {item.price}
           </Text>
 
-          <View style={styles.categoryContainer}>
+          <View
+            style={
+              styles.categoryContainer
+            }
+          >
             <Ionicons
               name="pricetag-outline"
               size={14}
@@ -108,7 +236,9 @@ export default function PublicProfileScreen() {
             />
 
             <Text
-              style={styles.serviceCategory}
+              style={
+                styles.serviceCategory
+              }
               numberOfLines={1}
             >
               {item.category}
@@ -116,7 +246,9 @@ export default function PublicProfileScreen() {
           </View>
         </View>
 
-        <View style={styles.arrowContainer}>
+        <View
+          style={styles.arrowContainer}
+        >
           <Ionicons
             name="chevron-forward"
             size={22}
@@ -136,13 +268,17 @@ export default function PublicProfileScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderService}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={
+          styles.listContent
+        }
         ListHeaderComponent={
           <>
             <View style={styles.header}>
               <Pressable
                 style={styles.headerButton}
-                onPress={() => router.back()}
+                onPress={() =>
+                  router.back()
+                }
               >
                 <Ionicons
                   name="arrow-back"
@@ -151,21 +287,42 @@ export default function PublicProfileScreen() {
                 />
               </Pressable>
 
-              <Text style={styles.headerTitle}>
+              <Text
+                style={styles.headerTitle}
+              >
                 Perfil
               </Text>
 
-              <View style={styles.headerButtonPlaceholder} />
+              <Pressable
+                style={styles.headerButton}
+                onPress={() =>
+                  setMenuVisible(true)
+                }
+              >
+                <Ionicons
+                  name="ellipsis-vertical"
+                  size={23}
+                  color="#FFFFFF"
+                />
+              </Pressable>
             </View>
 
-            <View style={styles.profileSection}>
-              <View style={styles.profileImageWrapper}>
+            <View
+              style={styles.profileSection}
+            >
+              <View
+                style={
+                  styles.profileImageWrapper
+                }
+              >
                 {userData.userPhoto ? (
                   <Image
                     source={{
                       uri: userData.userPhoto,
                     }}
-                    style={styles.profileImage}
+                    style={
+                      styles.profileImage
+                    }
                   />
                 ) : (
                   <View
@@ -182,13 +339,23 @@ export default function PublicProfileScreen() {
                 )}
               </View>
 
-              <Text style={styles.userName}>
+              <Text
+                style={styles.userName}
+              >
                 {userData.userName}
               </Text>
 
-              <View style={styles.statsCard}>
-                <View style={styles.statItem}>
-                  <View style={styles.statIconBlue}>
+              <View
+                style={styles.statsCard}
+              >
+                <View
+                  style={styles.statItem}
+                >
+                  <View
+                    style={
+                      styles.statIconBlue
+                    }
+                  >
                     <Ionicons
                       name="briefcase-outline"
                       size={23}
@@ -196,21 +363,40 @@ export default function PublicProfileScreen() {
                     />
                   </View>
 
-                  <Text style={styles.statNumber}>
+                  <Text
+                    style={
+                      styles.statNumber
+                    }
+                  >
                     {userServices.length}
                   </Text>
 
-                  <Text style={styles.statLabel}>
-                    {userServices.length === 1
+                  <Text
+                    style={
+                      styles.statLabel
+                    }
+                  >
+                    {userServices.length ===
+                    1
                       ? "Publicação"
                       : "Publicações"}
                   </Text>
                 </View>
 
-                <View style={styles.statDivider} />
+                <View
+                  style={
+                    styles.statDivider
+                  }
+                />
 
-                <View style={styles.statItem}>
-                  <View style={styles.statIconYellow}>
+                <View
+                  style={styles.statItem}
+                >
+                  <View
+                    style={
+                      styles.statIconYellow
+                    }
+                  >
                     <Ionicons
                       name="star"
                       size={23}
@@ -218,20 +404,38 @@ export default function PublicProfileScreen() {
                     />
                   </View>
 
-                  <Text style={styles.statNumber}>
+                  <Text
+                    style={
+                      styles.statNumber
+                    }
+                  >
                     0
                   </Text>
 
-                  <Text style={styles.statLabel}>
+                  <Text
+                    style={
+                      styles.statLabel
+                    }
+                  >
                     Avaliações
                   </Text>
                 </View>
               </View>
             </View>
 
-            <View style={styles.servicesSection}>
-              <View style={styles.sectionTitleRow}>
-                <View style={styles.sectionIcon}>
+            <View
+              style={
+                styles.servicesSection
+              }
+            >
+              <View
+                style={
+                  styles.sectionTitleRow
+                }
+              >
+                <View
+                  style={styles.sectionIcon}
+                >
                   <Ionicons
                     name="briefcase-outline"
                     size={21}
@@ -239,16 +443,27 @@ export default function PublicProfileScreen() {
                   />
                 </View>
 
-                <Text style={styles.sectionTitle}>
+                <Text
+                  style={
+                    styles.sectionTitle
+                  }
+                >
                   Serviços publicados
                 </Text>
               </View>
 
-              <View style={styles.servicesCount}>
+              <View
+                style={
+                  styles.servicesCount
+                }
+              >
                 <Text
-                  style={styles.servicesCountText}
+                  style={
+                    styles.servicesCountText
+                  }
                 >
-                  {userServices.length === 1
+                  {userServices.length ===
+                  1
                     ? "1 serviço"
                     : `${userServices.length} serviços`}
                 </Text>
@@ -257,8 +472,12 @@ export default function PublicProfileScreen() {
           </>
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
+          <View
+            style={styles.emptyContainer}
+          >
+            <View
+              style={styles.emptyIcon}
+            >
               <Ionicons
                 name="briefcase-outline"
                 size={42}
@@ -266,12 +485,288 @@ export default function PublicProfileScreen() {
               />
             </View>
 
-            <Text style={styles.emptyText}>
+            <Text
+              style={styles.emptyText}
+            >
               Nenhum serviço publicado.
             </Text>
           </View>
         }
       />
+
+      {/* MENU DO PERFIL */}
+      {menuVisible && (
+        <Pressable
+          style={styles.menuOverlay}
+          onPress={() =>
+            setMenuVisible(false)
+          }
+        >
+          <Pressable
+            style={styles.profileMenu}
+            onPress={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <Text
+              style={styles.menuTitle}
+            >
+              Opções
+            </Text>
+
+            <Pressable
+              style={styles.menuItem}
+              onPress={openReportModal}
+            >
+              <View
+                style={
+                  styles.menuIconReport
+                }
+              >
+                <Ionicons
+                  name="flag-outline"
+                  size={21}
+                  color="#E53935"
+                />
+              </View>
+
+              <View
+                style={
+                  styles.menuTextContainer
+                }
+              >
+                <Text
+                  style={
+                    styles.menuItemTitle
+                  }
+                >
+                  Denunciar usuário
+                </Text>
+
+                <Text
+                  style={
+                    styles.menuItemDescription
+                  }
+                >
+                  Informar um problema sobre este usuário
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuVisible(false);
+                handleBlockUser();
+              }}
+            >
+              <View
+                style={
+                  styles.menuIconBlock
+                }
+              >
+                <Ionicons
+                  name="ban-outline"
+                  size={21}
+                  color="#555555"
+                />
+              </View>
+
+              <View
+                style={
+                  styles.menuTextContainer
+                }
+              >
+                <Text
+                  style={
+                    styles.menuItemTitle
+                  }
+                >
+                  Bloquear usuário
+                </Text>
+
+                <Text
+                  style={
+                    styles.menuItemDescription
+                  }
+                >
+                  Impedir interações com este usuário
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.menuCancel}
+              onPress={() =>
+                setMenuVisible(false)
+              }
+            >
+              <Text
+                style={styles.menuCancelText}
+              >
+                Cancelar
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      )}
+
+      {/* MODAL DE DENÚNCIA */}
+      <Modal
+        visible={reportModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!sendingReport) {
+            setReportModalVisible(false);
+          }
+        }}
+      >
+        <View
+          style={styles.modalOverlay}
+        >
+          <View
+            style={styles.reportModal}
+          >
+            <View
+              style={styles.modalHandle}
+            />
+
+            <Text
+              style={styles.reportTitle}
+            >
+              Denunciar usuário
+            </Text>
+
+            <Text
+              style={styles.reportDescription}
+            >
+              Selecione o motivo da denúncia:
+            </Text>
+
+            <Pressable
+              style={styles.reasonButton}
+              onPress={() =>
+                handleReportUser(
+                  "Conteúdo inadequado"
+                )
+              }
+              disabled={sendingReport}
+            >
+              <Ionicons
+                name="warning-outline"
+                size={21}
+                color="#E53935"
+              />
+
+              <Text
+                style={styles.reasonText}
+              >
+                Conteúdo inadequado
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.reasonButton}
+              onPress={() =>
+                handleReportUser(
+                  "Golpe ou fraude"
+                )
+              }
+              disabled={sendingReport}
+            >
+              <Ionicons
+                name="alert-circle-outline"
+                size={21}
+                color="#E53935"
+              />
+
+              <Text
+                style={styles.reasonText}
+              >
+                Golpe ou fraude
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.reasonButton}
+              onPress={() =>
+                handleReportUser(
+                  "Comportamento abusivo"
+                )
+              }
+              disabled={sendingReport}
+            >
+              <Ionicons
+                name="sad-outline"
+                size={21}
+                color="#E53935"
+              />
+
+              <Text
+                style={styles.reasonText}
+              >
+                Comportamento abusivo
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.reasonButton}
+              onPress={() =>
+                handleReportUser(
+                  "Outro motivo"
+                )
+              }
+              disabled={sendingReport}
+            >
+              <Ionicons
+                name="ellipsis-horizontal-circle-outline"
+                size={21}
+                color="#E53935"
+              />
+
+              <Text
+                style={styles.reasonText}
+              >
+                Outro motivo
+              </Text>
+            </Pressable>
+
+            <TextInput
+              style={
+                styles.reportInput
+              }
+              placeholder="Detalhes adicionais (opcional)"
+              placeholderTextColor="#999"
+              multiline
+              value={reportDescription}
+              onChangeText={
+                setReportDescription
+              }
+              maxLength={500}
+              editable={!sendingReport}
+            />
+
+            <Pressable
+              style={
+                styles.cancelReportButton
+              }
+              onPress={() =>
+                setReportModalVisible(false)
+              }
+              disabled={sendingReport}
+            >
+              <Text
+                style={
+                  styles.cancelReportText
+                }
+              >
+                Cancelar
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -298,13 +793,13 @@ const styles = StyleSheet.create({
   },
 
   header: {
-  height: 100,
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  paddingHorizontal: 16,
-  paddingTop: 28,
-},
+    height: 100,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 28,
+  },
 
   headerButton: {
     width: 44,
@@ -312,12 +807,8 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.15)",
-  },
-
-  headerButtonPlaceholder: {
-    width: 44,
-    height: 44,
+    backgroundColor:
+      "rgba(255,255,255,0.15)",
   },
 
   headerTitle: {
@@ -370,7 +861,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: "#FFFFFF",
     borderRadius: 22,
-
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -479,7 +969,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#E8EEF5",
-
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -557,6 +1046,169 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#EAF3FF",
+  },
+
+  menuOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor:
+      "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+
+  profileMenu: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 25,
+  },
+
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#202020",
+    marginBottom: 8,
+  },
+
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 13,
+  },
+
+  menuIconReport: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFF0F0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  menuIconBlock: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#F0F2F5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  menuTextContainer: {
+    flex: 1,
+    marginLeft: 13,
+  },
+
+  menuItemTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#202020",
+  },
+
+  menuItemDescription: {
+    fontSize: 12,
+    color: "#777777",
+    marginTop: 3,
+  },
+
+  menuCancel: {
+    marginTop: 8,
+    backgroundColor: "#F0F2F5",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+
+  menuCancelText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#333333",
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor:
+      "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+
+  reportModal: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 25,
+  },
+
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D5D5D5",
+    alignSelf: "center",
+    marginBottom: 18,
+  },
+
+  reportTitle: {
+    fontSize: 21,
+    fontWeight: "800",
+    color: "#202020",
+  },
+
+  reportDescription: {
+    fontSize: 14,
+    color: "#777777",
+    marginTop: 5,
+    marginBottom: 12,
+  },
+
+  reasonButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEEEEE",
+  },
+
+  reasonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333333",
+    marginLeft: 12,
+  },
+
+  reportInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: "#DDDDDD",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 15,
+    fontSize: 14,
+    color: "#222222",
+    textAlignVertical: "top",
+    backgroundColor: "#F8F9FA",
+  },
+
+  cancelReportButton: {
+    marginTop: 12,
+    backgroundColor: "#F0F2F5",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+
+  cancelReportText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#333333",
   },
 
   notFoundContainer: {
