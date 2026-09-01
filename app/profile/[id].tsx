@@ -1,14 +1,26 @@
 import { useServices } from "@/src/contexts/ServiceContext";
 import { useUser } from "@/src/contexts/UserContext";
+import {
+  blockUser,
+  getBlockStatus,
+  unblockUser,
+} from "@/src/services/block";
 import { createReport } from "@/src/services/report";
 
 import { Service } from "@/src/types/Service";
 
 import { Ionicons } from "@expo/vector-icons";
 
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
 
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   Alert,
@@ -44,6 +56,20 @@ export default function PublicProfileScreen() {
   const [sendingReport, setSendingReport] =
     useState(false);
 
+  const [blockedByMe, setBlockedByMe] =
+    useState(false);
+
+  const [blockedMe, setBlockedMe] =
+    useState(false);
+
+  const [loadingBlockStatus, setLoadingBlockStatus] =
+    useState(true);
+
+    
+
+  const [changingBlock, setChangingBlock] =
+    useState(false);
+
   const userServices = useMemo(() => {
     return services.filter(
       (service) => service.userId === id
@@ -51,6 +77,47 @@ export default function PublicProfileScreen() {
   }, [services, id]);
 
   const userData = userServices[0];
+
+  useEffect(() => {
+    async function loadBlockStatus() {
+      if (!user?.id || !id) {
+        setLoadingBlockStatus(false);
+        return;
+      }
+
+      if (user.id === id) {
+        setLoadingBlockStatus(false);
+        return;
+      }
+
+      try {
+        setLoadingBlockStatus(true);
+
+        const status =
+          await getBlockStatus(
+            user.id,
+            id
+          );
+
+        setBlockedByMe(
+          status.blockedByMe
+        );
+
+        setBlockedMe(
+          status.blockedMe
+        );
+      } catch (error) {
+        console.log(
+          "Erro ao verificar bloqueio:",
+          error
+        );
+      } finally {
+        setLoadingBlockStatus(false);
+      }
+    }
+
+    loadBlockStatus();
+  }, [user?.id, id]);
 
   if (!userData) {
     return (
@@ -135,7 +202,7 @@ export default function PublicProfileScreen() {
     }
   }
 
-  function handleBlockUser() {
+  async function handleBlockUser() {
     if (!user?.id) {
       Alert.alert(
         "Erro",
@@ -148,9 +215,64 @@ export default function PublicProfileScreen() {
       return;
     }
 
+    if (changingBlock) {
+      return;
+    }
+
+    if (blockedByMe) {
+      Alert.alert(
+        "Desbloquear usuário?",
+        "Você poderá voltar a interagir e conversar com este usuário.",
+        [
+          {
+            text: "Cancelar",
+            style: "cancel",
+          },
+          {
+            text: "Desbloquear",
+            onPress: async () => {
+              try {
+                setChangingBlock(true);
+
+                await unblockUser(
+                  user.id,
+                  id
+                );
+
+                setBlockedByMe(false);
+
+                setMenuVisible(false);
+
+                Alert.alert(
+                  "Usuário desbloqueado",
+                  "Você poderá interagir novamente com este usuário."
+                );
+              } catch (error) {
+                console.log(
+                  "Erro ao desbloquear usuário:",
+                  error
+                );
+
+                Alert.alert(
+                  "Erro",
+                  error instanceof Error
+                    ? error.message
+                    : "Não foi possível desbloquear o usuário."
+                );
+              } finally {
+                setChangingBlock(false);
+              }
+            },
+          },
+        ]
+      );
+
+      return;
+    }
+
     Alert.alert(
       "Bloquear usuário?",
-      `Você não verá mais as interações desse usuário. Deseja continuar?`,
+      "Você não poderá enviar ou receber mensagens desse usuário enquanto ele estiver bloqueado.",
       [
         {
           text: "Cancelar",
@@ -159,11 +281,38 @@ export default function PublicProfileScreen() {
         {
           text: "Bloquear",
           style: "destructive",
-          onPress: () => {
-            Alert.alert(
-              "Bloqueio",
-              "A função de bloqueio será concluída na próxima etapa."
-            );
+          onPress: async () => {
+            try {
+              setChangingBlock(true);
+
+              await blockUser(
+                user.id,
+                id
+              );
+
+              setBlockedByMe(true);
+
+              setMenuVisible(false);
+
+              Alert.alert(
+                "Usuário bloqueado",
+                "Este usuário foi bloqueado. Você poderá desbloqueá-lo quando quiser."
+              );
+            } catch (error) {
+              console.log(
+                "Erro ao bloquear usuário:",
+                error
+              );
+
+              Alert.alert(
+                "Erro",
+                error instanceof Error
+                  ? error.message
+                  : "Não foi possível bloquear o usuário."
+              );
+            } finally {
+              setChangingBlock(false);
+            }
           },
         },
       ]
@@ -494,7 +643,6 @@ export default function PublicProfileScreen() {
         }
       />
 
-      {/* MENU DO PERFIL */}
       {menuVisible && (
         <Pressable
           style={styles.menuOverlay}
@@ -517,6 +665,10 @@ export default function PublicProfileScreen() {
             <Pressable
               style={styles.menuItem}
               onPress={openReportModal}
+              disabled={
+                sendingReport ||
+                changingBlock
+              }
             >
               <View
                 style={
@@ -555,10 +707,11 @@ export default function PublicProfileScreen() {
 
             <Pressable
               style={styles.menuItem}
-              onPress={() => {
-                setMenuVisible(false);
-                handleBlockUser();
-              }}
+              onPress={handleBlockUser}
+              disabled={
+                loadingBlockStatus ||
+                changingBlock
+              }
             >
               <View
                 style={
@@ -566,7 +719,11 @@ export default function PublicProfileScreen() {
                 }
               >
                 <Ionicons
-                  name="ban-outline"
+                  name={
+                    blockedByMe
+                      ? "lock-open-outline"
+                      : "ban-outline"
+                  }
                   size={21}
                   color="#555555"
                 />
@@ -582,7 +739,11 @@ export default function PublicProfileScreen() {
                     styles.menuItemTitle
                   }
                 >
-                  Bloquear usuário
+                  {loadingBlockStatus
+                    ? "Verificando..."
+                    : blockedByMe
+                    ? "Desbloquear usuário"
+                    : "Bloquear usuário"}
                 </Text>
 
                 <Text
@@ -590,7 +751,9 @@ export default function PublicProfileScreen() {
                     styles.menuItemDescription
                   }
                 >
-                  Impedir interações com este usuário
+                  {blockedByMe
+                    ? "Permitir novamente as interações"
+                    : "Impedir interações com este usuário"}
                 </Text>
               </View>
             </Pressable>
@@ -611,7 +774,6 @@ export default function PublicProfileScreen() {
         </Pressable>
       )}
 
-      {/* MODAL DE DENÚNCIA */}
       <Modal
         visible={reportModalVisible}
         transparent

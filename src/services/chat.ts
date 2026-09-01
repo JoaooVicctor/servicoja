@@ -937,3 +937,35 @@ export function listenTyping(
     }
   );
 }
+
+export async function blockUser(
+  currentUserId: string,
+  targetUserId: string
+): Promise<void> {
+  if (!currentUserId || !targetUserId) {
+    return;
+  }
+
+  await updateDoc(
+    doc(db, "users", currentUserId),
+    {
+      blockedUsers: arrayUnion(targetUserId),
+    }
+  );
+}
+
+export async function unblockUser(
+  currentUserId: string,
+  targetUserId: string
+): Promise<void> {
+  if (!currentUserId || !targetUserId) {
+    return;
+  }
+
+  await updateDoc(
+    doc(db, "users", currentUserId),
+    {
+      blockedUsers: arrayRemove(targetUserId),
+    }
+  );
+}

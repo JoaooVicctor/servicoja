@@ -5,12 +5,14 @@ import { useLocationPicker } from "@/src/contexts/LocationPickerContext";
 import { useUser } from "@/src/contexts/UserContext";
 import { uploadAudio } from "@/src/services/audio";
 import {
+  blockUser,
   deleteMessageForEveryone,
   deleteMessageForMe,
   listenTyping,
   markMessagesAsDelivered,
   sendMessage,
   setTyping,
+  unblockUser,
 } from "@/src/services/chat";
 import { uploadImage } from "@/src/services/cloudinary";
 import { uploadDocument } from "@/src/services/document";
@@ -359,6 +361,15 @@ const didInitialScrollRef = useRef(false);
 
   const [isSending, setIsSending] =
     useState(false);
+
+    const [blockedByMe, setBlockedByMe] = useState(false);
+    const [blockedMe, setBlockedMe] = useState(false);
+    const [checkingBlock, setCheckingBlock] = useState(true);
+    const [ownBlockDataLoaded, setOwnBlockDataLoaded] = useState(false);
+    const [otherBlockDataLoaded, setOtherBlockDataLoaded] = useState(false);
+    const [confirmedOtherUserId, setConfirmedOtherUserId] = useState("");
+    const [isTogglingBlock, setIsTogglingBlock] = useState(false);
+
 
   const [selectedImages, setSelectedImages] =
     useState<string[]>([]);
@@ -788,6 +799,7 @@ useEffect(() => {
         : data.customerName;
 
     setOtherUserName(name ?? "Usuário");
+    setConfirmedOtherUserId(otherUserId);
 
     unsubscribeUser = onSnapshot(
       doc(db, "users", otherUserId),
@@ -795,6 +807,8 @@ useEffect(() => {
         if (!snapshot.exists()) {
           setOtherUserOnline(false);
           setOtherUserLastSeen(null);
+          setBlockedMe(false);
+          setOtherBlockDataLoaded(true);
           return;
         }
 
@@ -811,12 +825,31 @@ useEffect(() => {
         setOtherUserPhoto(
           userData.photoURL ?? null
         );
+
+        // Verifica se a outra pessoa te bloqueou
+        const otherUserBlockedList: string[] =
+          Array.isArray(userData.blockedUsers)
+            ? userData.blockedUsers
+            : [];
+
+        setBlockedMe(
+          currentUserId
+            ? otherUserBlockedList.includes(currentUserId)
+            : false
+        );
+
+        setOtherBlockDataLoaded(true);
       },
       (error) => {
         console.log(
           "Erro ao acompanhar usuário:",
           error
         );
+
+        // Em caso de erro, assume bloqueado por segurança
+        // até conseguirmos confirmar o estado real.
+        setBlockedMe(true);
+        setOtherBlockDataLoaded(true);
       }
     );
   }
@@ -827,6 +860,131 @@ useEffect(() => {
     unsubscribeUser?.();
   };
 }, [id, user?.id]);
+
+useEffect(() => {
+  if (!user?.id) {
+    return;
+  }
+
+  const unsubscribe = onSnapshot(
+    doc(db, "users", user.id),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        setBlockedByMe(false);
+        setOwnBlockDataLoaded(true);
+        return;
+      }
+
+      const userData = snapshot.data();
+
+      const myBlockedList: string[] = Array.isArray(
+        userData.blockedUsers
+      )
+        ? userData.blockedUsers
+        : [];
+
+      setBlockedByMe(
+        confirmedOtherUserId
+          ? myBlockedList.includes(confirmedOtherUserId)
+          : false
+      );
+
+      setOwnBlockDataLoaded(true);
+    },
+    (error) => {
+      console.log(
+        "Erro ao verificar bloqueio:",
+        error
+      );
+
+      setOwnBlockDataLoaded(true);
+    }
+  );
+
+  return unsubscribe;
+}, [user?.id, confirmedOtherUserId]);
+
+// Só libera o envio de mensagens quando os dois
+// lados (meu bloqueio e o bloqueio do outro usuário)
+// já foram confirmados. Evita que, por uma fração
+// de segundo logo ao abrir a conversa, seja possível
+// enviar mensagem antes de sabermos se há bloqueio.
+useEffect(() => {
+  if (ownBlockDataLoaded && otherBlockDataLoaded) {
+    setCheckingBlock(false);
+  }
+}, [ownBlockDataLoaded, otherBlockDataLoaded]);
+
+async function handleToggleBlock() {
+  if (
+    !user?.id ||
+    !confirmedOtherUserId ||
+    isTogglingBlock
+  ) {
+    return;
+  }
+
+  if (blockedByMe) {
+    Alert.alert(
+      "Desbloquear usuário",
+      `Deseja desbloquear ${otherUserName}? Vocês poderão voltar a trocar mensagens.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Desbloquear",
+          onPress: async () => {
+            try {
+              setIsTogglingBlock(true);
+
+              await unblockUser(
+                user.id,
+                confirmedOtherUserId
+              );
+            } catch (error) {
+              console.log(
+                "Erro ao desbloquear usuário:",
+                error
+              );
+            } finally {
+              setIsTogglingBlock(false);
+            }
+          },
+        },
+      ]
+    );
+
+    return;
+  }
+
+  Alert.alert(
+    "Bloquear usuário",
+    `Deseja bloquear ${otherUserName}? Vocês não poderão mais trocar mensagens até que você desbloqueie.`,
+    [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Bloquear",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setIsTogglingBlock(true);
+
+            await blockUser(
+              user.id,
+              confirmedOtherUserId
+            );
+          } catch (error) {
+            console.log(
+              "Erro ao bloquear usuário:",
+              error
+            );
+          } finally {
+            setIsTogglingBlock(false);
+          }
+        },
+      },
+    ]
+  );
+}
 
 function formatLastSeen(lastSeen: Timestamp | null) {
   if (!lastSeen) {
@@ -870,7 +1028,14 @@ function formatLastSeen(lastSeen: Timestamp | null) {
 }
 
  async function handleSendMessage() {
-  if (!user || !id || isSending) {
+  if (
+    !user ||
+    !id ||
+    isSending ||
+    checkingBlock ||
+    blockedByMe ||
+    blockedMe
+  ) {
     return;
   }
 
@@ -1987,6 +2152,26 @@ function getDocumentInfo(fileName?: string) {
     </Text>
   </View>
 </Pressable>
+
+        {!blockedMe && (
+          <Pressable
+            style={styles.backButton}
+            onPress={handleToggleBlock}
+            disabled={
+              isTogglingBlock || !confirmedOtherUserId
+            }
+          >
+            <Ionicons
+              name={
+                blockedByMe
+                  ? "lock-open-outline"
+                  : "ban-outline"
+              }
+              size={22}
+              color={blockedByMe ? "#1677FF" : "#E53935"}
+            />
+          </Pressable>
+        )}
       </View>
 
     <FlatList
@@ -3244,6 +3429,51 @@ item.longitude !== undefined && (
   </View>
 )}
 
+{blockedByMe || blockedMe ? (
+  <View
+    style={{
+      backgroundColor: "#FFFFFF",
+      borderTopWidth: 1,
+      borderTopColor: "#E5E5E5",
+      paddingHorizontal: 20,
+      paddingVertical: 18,
+      alignItems: "center",
+    }}
+  >
+    <Ionicons
+      name="ban-outline"
+      size={28}
+      color="#E53935"
+    />
+
+    <Text
+      style={{
+        marginTop: 6,
+        fontSize: 15,
+        fontWeight: "700",
+        color: "#333",
+        textAlign: "center",
+      }}
+    >
+      {blockedByMe
+        ? "Você bloqueou este usuário"
+        : "Você foi bloqueado por este usuário"}
+    </Text>
+
+    <Text
+      style={{
+        marginTop: 4,
+        fontSize: 13,
+        color: "#777",
+        textAlign: "center",
+      }}
+    >
+      {blockedByMe
+        ? "Desbloqueie o usuário para voltar a conversar."
+        : "Não é possível enviar mensagens para este usuário."}
+    </Text>
+  </View>
+) : (
         <View
   style={[
     styles.inputContainer,
@@ -3363,7 +3593,8 @@ multiline
         !selectedDocument &&
         !selectedLocation
       ) ||
-      isSending
+      isSending ||
+      checkingBlock
     ) && styles.disabledButton,
   ]}
   onPress={handleSendMessage}
@@ -3374,7 +3605,7 @@ multiline
       selectedVideos.length === 0 &&
       !selectedDocument &&
       !selectedLocation
-    ) || isSending
+    ) || isSending || checkingBlock
   }
 >
   <Ionicons
@@ -3386,6 +3617,7 @@ multiline
           </>
         )}
       </View>
+        )}
         </View>
       </KeyboardStickyView>
 
