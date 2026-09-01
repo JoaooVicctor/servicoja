@@ -1,11 +1,17 @@
 import { useServices } from "@/src/contexts/ServiceContext";
 import { useUser } from "@/src/contexts/UserContext";
 import { startConversation } from "@/src/services/chat";
+import { db } from "@/src/services/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import {
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
+import {
+  addDoc,
+  collection,
+  serverTimestamp,
+} from "firebase/firestore";
 import { useRef, useState } from "react";
 import {
   Alert,
@@ -20,6 +26,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -58,6 +65,21 @@ export default function ServiceDetails() {
 
   const [isOpeningChat, setIsOpeningChat] =
     useState(false);
+
+    const [serviceMenuVisible, setServiceMenuVisible] =
+  useState(false);
+
+const [reportMenuVisible, setReportMenuVisible] =
+  useState(false);
+
+  const [selectedReportReason, setSelectedReportReason] =
+  useState("");
+
+const [reportDescription, setReportDescription] =
+  useState("");
+
+const [sendingReport, setSendingReport] =
+  useState(false);
 
   const imagesListRef =
     useRef<FlatList<string>>(null);
@@ -159,6 +181,60 @@ export default function ServiceDetails() {
       id: service.userId,
     },
   });
+}
+
+async function handleReportService(reason: string) {
+  if (!user?.id) {
+    Alert.alert(
+      "Entre na sua conta",
+      "Você precisa estar conectado para denunciar um serviço."
+    );
+    return;
+  }
+
+  if (!service) {
+    return;
+  }
+
+  if (user.id === service.userId) {
+    Alert.alert(
+      "Ação inválida",
+      "Você não pode denunciar o seu próprio serviço."
+    );
+    return;
+  }
+
+  try {
+    await addDoc(collection(db, "reports"), {
+      reporterId: user.id,
+      reportedUserId: service.userId,
+      serviceId: service.id,
+      type: "service",
+      reason,
+      description:
+  typeof reportDescription === "string" &&
+  reportDescription.trim().length > 0
+    ? reportDescription.trim()
+    : null,
+      status: "pending",
+      createdAt: serverTimestamp(),
+    });
+
+    Alert.alert(
+      "Denúncia enviada",
+      "Obrigado por nos avisar. Vamos analisar este anúncio."
+    );
+  } catch (error) {
+    console.log(
+      "Erro ao denunciar serviço:",
+      error
+    );
+
+    Alert.alert(
+      "Erro",
+      "Não foi possível enviar a denúncia. Tente novamente."
+    );
+  }
 }
 
   async function handleOpenChat() {
@@ -309,6 +385,17 @@ export default function ServiceDetails() {
               color="#202020"
             />
           </Pressable>
+
+         <Pressable
+  style={styles.reportServiceButton}
+  onPress={() => setServiceMenuVisible(true)}
+>
+  <Ionicons
+    name="ellipsis-vertical"
+    size={23}
+    color="#202020"
+  />
+</Pressable>
 
           {service.images.length > 1 && (
             <>
@@ -551,6 +638,266 @@ export default function ServiceDetails() {
         </Pressable>
       </View>
 
+            <Modal
+        visible={serviceMenuVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() =>
+          setServiceMenuVisible(false)
+        }
+      >
+        <Pressable
+          style={styles.menuOverlay}
+          onPress={() =>
+            setServiceMenuVisible(false)
+          }
+        >
+          <Pressable
+            style={styles.serviceMenu}
+            onPress={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <View style={styles.menuHandle} />
+
+            <Text style={styles.menuTitle}>
+              Opções do anúncio
+            </Text>
+
+            <Pressable
+              style={styles.menuOption}
+              onPress={() => {
+                setServiceMenuVisible(false);
+
+                setTimeout(() => {
+                  setReportMenuVisible(true);
+                }, 150);
+              }}
+            >
+              <View style={styles.menuIconDanger}>
+                <Ionicons
+                  name="flag-outline"
+                  size={22}
+                  color="#E53935"
+                />
+              </View>
+
+              <View
+                style={
+                  styles.menuOptionTextContainer
+                }
+              >
+                <Text
+                  style={styles.menuOptionTitle}
+                >
+                  Denunciar serviço
+                </Text>
+
+                <Text
+                  style={
+                    styles.menuOptionDescription
+                  }
+                >
+                  Informar um problema com este anúncio
+                </Text>
+              </View>
+
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color="#999999"
+              />
+            </Pressable>
+
+            <Pressable
+              style={styles.cancelMenuButton}
+              onPress={() =>
+                setServiceMenuVisible(false)
+              }
+            >
+              <Text style={styles.cancelMenuText}>
+                Cancelar
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+  visible={reportMenuVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => {
+    setReportMenuVisible(false);
+    setSelectedReportReason("");
+    setReportDescription("");
+  }}
+>
+  <Pressable
+    style={styles.menuOverlay}
+    onPress={() => {
+      setReportMenuVisible(false);
+      setSelectedReportReason("");
+      setReportDescription("");
+    }}
+  >
+    <Pressable
+      style={styles.serviceMenu}
+      onPress={(event) =>
+        event.stopPropagation()
+      }
+    >
+      <View style={styles.menuHandle} />
+
+      <Text style={styles.menuTitle}>
+        Denunciar serviço
+      </Text>
+
+      <Text style={styles.reportSubtitle}>
+        Selecione o motivo da denúncia
+      </Text>
+
+      {[
+        "Golpe ou fraude",
+        "Conteúdo enganoso",
+        "Conteúdo inadequado",
+        "Serviço proibido",
+        "Outro",
+      ].map((reason) => (
+        <Pressable
+          key={reason}
+          style={styles.reportOption}
+          onPress={() => {
+            setSelectedReportReason(reason);
+          }}
+        >
+          <View
+            style={[
+              styles.reportOptionIcon,
+              selectedReportReason === reason &&
+                styles.reportOptionIconSelected,
+            ]}
+          >
+            <Ionicons
+              name={
+                selectedReportReason === reason
+                  ? "checkmark"
+                  : "flag-outline"
+              }
+              size={19}
+              color="#1677FF"
+            />
+          </View>
+
+          <Text
+            style={[
+              styles.reportOptionText,
+              selectedReportReason === reason &&
+                styles.reportOptionTextSelected,
+            ]}
+          >
+            {reason}
+          </Text>
+
+          {selectedReportReason === reason && (
+            <Ionicons
+              name="checkmark-circle"
+              size={22}
+              color="#1677FF"
+            />
+          )}
+        </Pressable>
+      ))}
+
+      {selectedReportReason !== "" && (
+        <>
+          <Text style={styles.descriptionLabel}>
+            Explique o que aconteceu{" "}
+            <Text style={styles.optionalText}>
+              (opcional)
+            </Text>
+          </Text>
+
+          <View style={styles.reportInputContainer}>
+            <TextInput
+              style={styles.reportInput}
+              placeholder="Conte mais detalhes sobre a denúncia..."
+              placeholderTextColor="#999999"
+              value={reportDescription}
+              onChangeText={setReportDescription}
+              multiline
+              maxLength={500}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <Text style={styles.characterCount}>
+            {reportDescription.length}/500
+          </Text>
+
+          <Pressable
+            style={[
+              styles.confirmReportButton,
+              sendingReport &&
+                styles.disabledReportButton,
+            ]}
+            disabled={sendingReport}
+            onPress={async () => {
+              if (!selectedReportReason) {
+                return;
+              }
+
+              try {
+                setSendingReport(true);
+
+                console.log(
+  "DESCRIÇÃO DA DENÚNCIA:",
+  reportDescription
+);
+
+                await handleReportService(
+                  selectedReportReason
+                );
+
+                setReportMenuVisible(false);
+                setSelectedReportReason("");
+                setReportDescription("");
+              } finally {
+                setSendingReport(false);
+              }
+            }}
+          >
+            <Ionicons
+              name="paper-plane-outline"
+              size={20}
+              color="#FFFFFF"
+            />
+
+            <Text style={styles.confirmReportText}>
+              {sendingReport
+                ? "Enviando..."
+                : "Confirmar denúncia"}
+            </Text>
+          </Pressable>
+        </>
+      )}
+
+      <Pressable
+        style={styles.cancelMenuButton}
+        onPress={() => {
+          setReportMenuVisible(false);
+          setSelectedReportReason("");
+          setReportDescription("");
+        }}
+      >
+        <Text style={styles.cancelMenuText}>
+          Cancelar
+        </Text>
+      </Pressable>
+    </Pressable>
+  </Pressable>
+</Modal>
+
       <Modal
         visible={showFullscreen}
         animationType="fade"
@@ -693,6 +1040,196 @@ image: {
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  reportServiceButton: {
+  position: "absolute",
+  top: 48,
+  right: 16,
+  width: 44,
+  height: 44,
+  borderRadius: 22,
+  backgroundColor: "#FFFFFF",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+  menuOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+
+  serviceMenu: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+  },
+
+  menuHandle: {
+    width: 42,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#D6D6D6",
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+
+  menuTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#202020",
+    marginBottom: 18,
+  },
+
+  menuOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+
+  menuIconDanger: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFF0F0",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+
+  menuOptionTextContainer: {
+    flex: 1,
+  },
+
+  menuOptionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#202020",
+  },
+
+  menuOptionDescription: {
+    fontSize: 13,
+    color: "#777777",
+    marginTop: 3,
+  },
+
+  cancelMenuButton: {
+    height: 50,
+    borderRadius: 13,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+
+  cancelMenuText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#555555",
+  },
+
+  reportSubtitle: {
+    fontSize: 14,
+    color: "#777777",
+    marginTop: -10,
+    marginBottom: 10,
+  },
+
+  reportOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 13,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+
+  reportOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#EEF5FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+
+  reportOptionText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333333",
+  },
+
+    reportOptionIconSelected: {
+    backgroundColor: "#DCEBFF",
+  },
+
+  reportOptionTextSelected: {
+    color: "#1677FF",
+    fontWeight: "800",
+  },
+
+  descriptionLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333333",
+    marginTop: 14,
+    marginBottom: 8,
+  },
+
+  optionalText: {
+    color: "#999999",
+    fontWeight: "500",
+  },
+
+  reportInputContainer: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    minHeight: 90,
+  },
+
+  reportInput: {
+    minHeight: 90,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: "#333333",
+  },
+
+  characterCount: {
+    textAlign: "right",
+    fontSize: 11,
+    color: "#999999",
+    marginTop: 4,
+  },
+
+  confirmReportButton: {
+    height: 50,
+    borderRadius: 13,
+    backgroundColor: "#1677FF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 14,
+    gap: 8,
+  },
+
+  disabledReportButton: {
+    opacity: 0.6,
+  },
+
+  confirmReportText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
   },
 
   imageArrow: {
