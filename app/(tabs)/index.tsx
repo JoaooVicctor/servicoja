@@ -21,6 +21,7 @@ import {
 import {
   Dimensions,
   Image,
+  Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
@@ -93,6 +94,9 @@ export default function Home() {
 
   const [refreshing, setRefreshing] =
     useState(false);
+
+    const [menuVisible, setMenuVisible] =
+  useState(false);
 
   const [servicesOrder, setServicesOrder] =
     useState<string[]>([]);
@@ -347,9 +351,7 @@ export default function Home() {
               <Pressable
                 style={styles.menuButton}
                 onPress={() =>
-                  router.push(
-                    "/(tabs)/perfil"
-                  )
+                  setMenuVisible(true)
                 }
               >
                 <Ionicons
@@ -619,6 +621,59 @@ export default function Home() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <Pressable
+          style={styles.homeMenuOverlay}
+          onPress={() => setMenuVisible(false)}
+        >
+          <Pressable
+            style={styles.homeMenu}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <Pressable
+              style={styles.homeMenuOption}
+              onPress={() => {
+                setMenuVisible(false);
+                router.push("/settings");
+              }}
+            >
+              <Ionicons
+                name="settings-outline"
+                size={22}
+                color={colors.black}
+              />
+              <Text style={styles.homeMenuOptionText}>
+                Configurações
+              </Text>
+            </Pressable>
+
+            <View style={styles.homeMenuDivider} />
+
+            <Pressable
+              style={styles.homeMenuOption}
+              onPress={() => {
+                setMenuVisible(false);
+                router.push("/notifications");
+              }}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={22}
+                color={colors.black}
+              />
+              <Text style={styles.homeMenuOptionText}>
+                Notificações
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -881,5 +936,46 @@ const styles = StyleSheet.create({
     color: colors.gray600,
     textAlign: "center",
     lineHeight: 20,
+  },
+
+  homeMenuOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 90,
+    paddingRight: 16,
+  },
+
+  homeMenu: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingVertical: 6,
+    width: 200,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+
+  homeMenuOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+
+  homeMenuOptionText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.black,
+  },
+
+  homeMenuDivider: {
+    height: 1,
+    backgroundColor: "#EEEEEE",
+    marginHorizontal: 12,
   },
 });
