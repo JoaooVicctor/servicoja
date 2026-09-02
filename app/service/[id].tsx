@@ -10,7 +10,10 @@ import {
 import {
   addDoc,
   collection,
+  getDocs,
+  query,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { useRef, useState } from "react";
 import {
@@ -205,6 +208,29 @@ async function handleReportService(reason: string) {
   }
 
   try {
+    const existingReportQuery = query(
+      collection(db, "reports"),
+      where("reporterId", "==", user.id),
+      where("serviceId", "==", service.id),
+      where("type", "==", "service")
+    );
+
+    const existingReportSnapshot =
+      await getDocs(existingReportQuery);
+
+    console.log(
+      "DENÚNCIAS ENCONTRADAS:",
+      existingReportSnapshot.size
+    );
+
+    if (!existingReportSnapshot.empty) {
+      Alert.alert(
+        "Denúncia já enviada",
+        "Você já denunciou este serviço."
+      );
+      return;
+    }
+
     await addDoc(collection(db, "reports"), {
       reporterId: user.id,
       reportedUserId: service.userId,
@@ -212,10 +238,7 @@ async function handleReportService(reason: string) {
       type: "service",
       reason,
       description:
-  typeof reportDescription === "string" &&
-  reportDescription.trim().length > 0
-    ? reportDescription.trim()
-    : null,
+        reportDescription.trim() || null,
       status: "pending",
       createdAt: serverTimestamp(),
     });
