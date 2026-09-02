@@ -84,6 +84,8 @@ const [reportDescription, setReportDescription] =
 const [sendingReport, setSendingReport] =
   useState(false);
 
+  const [topBarHeight, setTopBarHeight] = useState(0);
+
   const imagesListRef =
     useRef<FlatList<string>>(null);
 
@@ -360,11 +362,53 @@ async function handleReportService(reason: string) {
 
   return (
     <View style={styles.container}>
+      <View
+        style={[
+          styles.topBar,
+          {
+            paddingTop: insets.top + 4,
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+          },
+        ]}
+        onLayout={(event) =>
+          setTopBarHeight(event.nativeEvent.layout.height)
+        }
+      >
+        <Pressable
+          style={styles.topBarButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={25}
+            color="#202020"
+          />
+        </Pressable>
+
+        <Pressable
+          style={styles.topBarButton}
+          onPress={() =>
+            setServiceMenuVisible(true)
+          }
+        >
+          <Ionicons
+            name="ellipsis-vertical"
+            size={23}
+            color="#202020"
+          />
+        </Pressable>
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
           {
+            paddingTop: topBarHeight,
             paddingBottom:
               90 +
               Math.max(insets.bottom, 12),
@@ -397,28 +441,6 @@ async function handleReportService(reason: string) {
               </Pressable>
             )}
           />
-
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={25}
-              color="#202020"
-            />
-          </Pressable>
-
-         <Pressable
-  style={styles.reportServiceButton}
-  onPress={() => setServiceMenuVisible(true)}
->
-  <Ionicons
-    name="ellipsis-vertical"
-    size={23}
-    color="#202020"
-  />
-</Pressable>
 
           {service.images.length > 1 && (
             <>
@@ -1040,6 +1062,23 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {},
+
+   topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+  },
+
+  topBarButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   imageContainer: {
   width: screenWidth,
