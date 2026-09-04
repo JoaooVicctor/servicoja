@@ -11,6 +11,9 @@ import { colors } from "@/src/theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
+import anuncio2 from "@/assets/images/carousel/barbeariaJv.jpeg";
+import anuncio1 from "@/assets/images/carousel/carrossel1.jpeg";
+
 import {
   useEffect,
   useMemo,
@@ -21,6 +24,7 @@ import {
 import {
   Dimensions,
   Image,
+  Linking,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -29,7 +33,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from "react-native";
 
 const { width } = Dimensions.get("window");
@@ -40,17 +44,13 @@ const CAROUSEL_WIDTH = width;
 const carouselItems = [
   {
     id: "1",
-    title: "Anuncie aqui",
-    description:
-      "Divulgue sua empresa e alcance mais clientes no ServiçoJá.",
-    button: "Quero anunciar",
+    image: anuncio1,
+    link: "/servico/ID_DO_SERVICO_AQUI",
   },
   {
     id: "2",
-    title: "Anuncie aqui",
-    description:
-      "Mostre sua empresa para pessoas que estão procurando serviços.",
-    button: "Quero anunciar",
+    image: anuncio2, 
+    link: "https://www.instagram.com/jv_barbeariaitz/",
   },
   {
     id: "3",
@@ -58,6 +58,7 @@ const carouselItems = [
     description:
       "Destaque sua marca e conquiste novos clientes.",
     button: "Quero anunciar",
+    link: "https://wa.me/5599999999999",
   },
   {
     id: "4",
@@ -65,6 +66,7 @@ const carouselItems = [
     description:
       "Seu negócio pode aparecer em destaque para nossos usuários.",
     button: "Quero anunciar",
+    link: "https://wa.me/5599999999999",
   },
   {
     id: "5",
@@ -72,6 +74,7 @@ const carouselItems = [
     description:
       "Divulgue sua empresa no ServiçoJá.",
     button: "Quero anunciar",
+    link: "https://wa.me/5599999999999",
   },
 ];
 
@@ -299,6 +302,19 @@ export default function Home() {
     }
   }, [carouselIndex]);
 
+    function handleCarouselPress(link?: string) {
+    if (!link) {
+      return;
+    }
+
+    if (link.startsWith("http")) {
+      Linking.openURL(link);
+      return;
+    }
+
+    router.push(link as any);
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.fixedHeader}>
@@ -435,53 +451,72 @@ export default function Home() {
                     styles.carouselPage
                   }
                 >
-                  <View
+                   <Pressable
                     style={
                       styles.carouselCard
                     }
+                    onPress={() =>
+                      handleCarouselPress(item.link)
+                    }
                   >
-                    <View
-                      style={
-                        styles.carouselDecoration
-                      }
-                    />
+                    {item.image ? (
+                      <Image
+                        source={item.image}
+                        style={styles.carouselImage}
+                      />
+                    ) : (
+                      <View
+                        style={
+                          styles.carouselDecoration
+                        }
+                      />
+                    )}
 
-                    <View
+                                       <View
                       style={
                         styles.carouselTextContent
                       }
                     >
-                      <Text
-                        style={
-                          styles.carouselTitle
-                        }
-                      >
-                        {item.title}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.carouselDescription
-                        }
-                      >
-                        {item.description}
-                      </Text>
-
-                      <Pressable
-                        style={
-                          styles.carouselButton
-                        }
-                      >
+                      {item.title ? (
                         <Text
                           style={
-                            styles.carouselButtonText
+                            styles.carouselTitle
                           }
                         >
-                          {item.button}
+                          {item.title}
                         </Text>
-                      </Pressable>
+                      ) : null}
+
+                      {item.description ? (
+                        <Text
+                          style={
+                            styles.carouselDescription
+                          }
+                        >
+                          {item.description}
+                        </Text>
+                      ) : null}
+
+                      {item.button ? (
+                        <Pressable
+                          style={
+                            styles.carouselButton
+                          }
+                          onPress={() =>
+                            handleCarouselPress(item.link)
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.carouselButtonText
+                            }
+                          >
+                            {item.button}
+                          </Text>
+                        </Pressable>
+                      ) : null}
                     </View>
-                  </View>
+                  </Pressable>
                 </View>
               )
             )}
@@ -793,7 +828,7 @@ const styles = StyleSheet.create({
     width:
       CAROUSEL_WIDTH -
       CAROUSEL_GAP * 2,
-    height: 185,
+    height: 200,
     borderRadius: 22,
     backgroundColor: "#1677FF",
     overflow: "hidden",
@@ -810,6 +845,13 @@ const styles = StyleSheet.create({
       "rgba(255,255,255,0.08)",
     right: -80,
     top: -45,
+  },
+
+    carouselImage: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
 
   carouselTextContent: {

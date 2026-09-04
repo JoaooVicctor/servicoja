@@ -1,4 +1,5 @@
 import { Button } from "@/src/components/Button";
+import { useFavorites } from "@/src/contexts/FavoritesContext";
 import { useServices } from "@/src/contexts/ServiceContext";
 import { useUser } from "@/src/contexts/UserContext";
 
@@ -13,6 +14,7 @@ import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { updateProfilePhoto } from "@/src/services/userService";
+
 
 import { router } from "expo-router";
 
@@ -60,7 +62,9 @@ export default function Perfil() {
     deleteAccount,
   } = useUser();
 
-  const { updateUserServices } = useServices();
+  const { updateUserServices, services } = useServices();
+
+  const { favorites } = useFavorites();
 
   const [deleteModalVisible, setDeleteModalVisible] =
     useState(false);
@@ -76,6 +80,8 @@ export default function Perfil() {
 
   async function handleLogout() {
     await logout();
+
+  
 
     router.replace("/");
   }
@@ -360,47 +366,34 @@ await deleteAccount(
             </View>
           </View>
 
-          <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>
-                0
-              </Text>
+          {user && (
+            <View style={styles.statsContainer}>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>
+                  {
+                    services.filter(
+                      (service) =>
+                        service.userId === user?.id
+                    ).length
+                  }
+                </Text>
 
-              <Text style={styles.statTitle}>
-                Serviços
-              </Text>
+                <Text style={styles.statTitle}>
+                  Serviços
+                </Text>
+              </View>
+
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>
+                  {favorites.length}
+                </Text>
+
+                <Text style={styles.statTitle}>
+                  Favoritos
+                </Text>
+              </View>
             </View>
-
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>
-                0
-              </Text>
-
-              <Text style={styles.statTitle}>
-                Conversas
-              </Text>
-            </View>
-
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>
-                0
-              </Text>
-
-              <Text style={styles.statTitle}>
-                Favoritos
-              </Text>
-            </View>
-
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>
-                5.0
-              </Text>
-
-              <Text style={styles.statTitle}>
-                Avaliação
-              </Text>
-            </View>
-          </View>
+          )}
 
           <View style={styles.menu}>
             <TouchableOpacity
@@ -496,38 +489,40 @@ await deleteAccount(
             </TouchableOpacity>
           </View>
 
-          <View
-            style={{
-              marginTop: 25,
-              marginBottom: 40,
-            }}
-          >
-            <Button
-              title="Sair da conta"
-              onPress={handleLogout}
-            />
-
-            <TouchableOpacity
-              style={
-                styles.deleteAccountButton
-              }
-              onPress={handleDeleteAccount}
+          {user && (
+            <View
+              style={{
+                marginTop: 25,
+                marginBottom: 40,
+              }}
             >
-              <Ionicons
-                name="trash-outline"
-                size={20}
-                color="#E53935"
+              <Button
+                title="Sair da conta"
+                onPress={handleLogout}
               />
 
-              <Text
+              <TouchableOpacity
                 style={
-                  styles.deleteAccountText
+                  styles.deleteAccountButton
                 }
+                onPress={handleDeleteAccount}
               >
-                Excluir conta
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <Ionicons
+                  name="trash-outline"
+                  size={20}
+                  color="#E53935"
+                />
+
+                <Text
+                  style={
+                    styles.deleteAccountText
+                  }
+                >
+                  Excluir conta
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </ScrollView>
 

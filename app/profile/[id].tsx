@@ -531,44 +531,6 @@ export default function PublicProfileScreen() {
                       : "Publicações"}
                   </Text>
                 </View>
-
-                <View
-                  style={
-                    styles.statDivider
-                  }
-                />
-
-                <View
-                  style={styles.statItem}
-                >
-                  <View
-                    style={
-                      styles.statIconYellow
-                    }
-                  >
-                    <Ionicons
-                      name="star"
-                      size={23}
-                      color="#F5B301"
-                    />
-                  </View>
-
-                  <Text
-                    style={
-                      styles.statNumber
-                    }
-                  >
-                    0
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.statLabel
-                    }
-                  >
-                    Avaliações
-                  </Text>
-                </View>
               </View>
             </View>
 
@@ -1051,15 +1013,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#EAF3FF",
-  },
-
-  statIconYellow: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFF7DD",
   },
 
   statNumber: {
